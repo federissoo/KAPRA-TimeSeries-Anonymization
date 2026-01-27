@@ -12,12 +12,12 @@
 
 # KAPRA: Strategic (k,P)-Anonymity for Time Series Data
 
-This project implements the KAPRA framework to address privacy concerns in time series publishing. While traditional methods focus on hiding numerical values, KAPRA introduces a dual protection model to defend against sophisticated linkage attacks.
+This project implements the KAPRA algorithm, as described in the paper [*"Supporting Pattern-Preserving Anonymization For Time-Series Data"*](http://chaozhang.org/papers/2013-tkde-privacy.pdf), to address privacy issues in the publishing of time-series data.
 
 ## The Privacy Challenge: Unified Attacks
 In time series datasets, an individual's identity is exposed through two main channels:
-- **Value Knowledge ($K_v$):** Specific numerical data points at certain timestamps.
-- **Pattern Knowledge ($K_p$):** The shape, trend, or "signature" of the data over time.
+- **Value Knowledge ($K_v$):** Specific numerical data points at certain timestamps (QIs).
+- **Pattern Knowledge ($K_p$):** The shape, trend, or "signature" of the data over time (Patterns).
 
 When an adversary combines both, they perform a **Unified Attack**, which can identify individuals even when their data is partially obscured.
 

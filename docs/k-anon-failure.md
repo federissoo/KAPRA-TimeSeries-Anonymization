@@ -1,3 +1,15 @@
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']]
+    }
+  };
+</script>
+<script id="MathJax-script" async 
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
 # The Failure of Traditional k-Anonymity in Time-Series
 
 **Conventional k-anonymity** protects privacy by grouping records into "Anonymization Envelopes" (AE), which are anonymization envelopes defined by value ranges. However, this model proves inadequate for time-series data due to a critical limitation: the destruction of analytical utility, known as **Pattern Loss**.
