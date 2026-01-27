@@ -12,7 +12,7 @@ In time-series, the utility of the data depends not only on point values but als
     * **PRQ (Pattern matching Range Query)**: Selecting records based on trend predicates (e.g., "select those who have grown by at least 50%").
 
 ## 2. Example
-Let us consider a dataset with Quasi-Identifier (QI) attributes **Department** and **Seniority**. The original data shows distinct trends for two Junior employees in Human Resources.
+Let us consider a micro-example of the project's dataset with Quasi-Identifier (QI) attributes **Department** and **Seniority**. The original data shows distinct trends for two Junior employees in Human Resources.
 
 ### Pre k-anon Status (Micro-data)
 

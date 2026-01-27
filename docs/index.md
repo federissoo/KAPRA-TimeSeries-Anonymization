@@ -10,8 +10,8 @@ In time series datasets, an individual's identity is exposed through two main ch
 When an adversary combines both, they perform a **Unified Attack**, which can identify individuals even when their data is partially obscured.
 
 ## Documentation Structure
-- [Why k-Anonymity Fails](k-anon-failure.md): Analysis of how pattern-based linkage breaks traditional value-based anonymity.
-- [The KAPRA Solution](kapra-approach.md): Detailed explanation of the (k,P)-Anonymity model and SAX transformation.
+- [Why k-Anonymity Fails](k-anon-failure.md)
+- [The KAPRA Solution](kapra-approach.md)
 
 ## Technical Implementation
 The current implementation uses Python and Poetry, processing Quasi-Identifiers (QI) that include both categorical attributes (Dept, Seniority) and temporal sequences (H1 to H8).
