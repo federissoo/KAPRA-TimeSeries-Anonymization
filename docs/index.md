@@ -1,3 +1,15 @@
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']]
+    }
+  };
+</script>
+<script id="MathJax-script" async 
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
 # KAPRA: Strategic (k,P)-Anonymity for Time Series Data
 
 This project implements the KAPRA framework to address privacy concerns in time series publishing. While traditional methods focus on hiding numerical values, KAPRA introduces a dual protection model to defend against sophisticated linkage attacks.
