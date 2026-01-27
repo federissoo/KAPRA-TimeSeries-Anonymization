@@ -15,6 +15,7 @@ In time-series, the utility of the data depends not only on point values but als
 Let us consider a dataset with Quasi-Identifier (QI) attributes **Department** and **Seniority**. The original data shows distinct trends for two Junior employees in Human Resources.
 
 ### Pre k-anon Status (Micro-data)
+
 | Record | Dept | Seniority | H1 (Value) | H2 (Value) | **Real Trend** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | HR | Junior | 10 | 37 | **Rising** |
@@ -27,4 +28,4 @@ Let us consider a dataset with Quasi-Identifier (QI) attributes **Department** a
 | 1 | HR | Junior | [10, 40] | [31, 37] | Unknown |
 | 2 | HR | Junior | [10, 40] | [31, 37] | Unknown |
 
-**Paper Conclusion**: The **(k,P)-anonymity** model is necessary, as it guarantees k-anonymity on values and P-anonymity on patterns, ensuring that each pattern is shared by at least P records.
+The **(k,P)-anonymity** model is necessary, as it guarantees k-anonymity on values and P-anonymity on patterns, ensuring that each pattern is shared by at least P records.
