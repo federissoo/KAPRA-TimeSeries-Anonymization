@@ -2,9 +2,7 @@
 
 [![Documentation](https://img.shields.io/badge/DOCS-Read%20the%20Documentation-blue?style=for-the-badge&logo=github)](https://federissoo.github.io/KAPRA-TimeSeries-Anonymization/)
 
-This project implements the **KAPRA** (k-Anonymity with Pattern Representation) algorithm to protect time-series data against unified attacks. It ensures privacy by guaranteeing both value-based ($k$-anonymity) and pattern-based ($P$-anonymity) protection.
-
-> **Note**: For a deep dive into the theory, the failure of traditional k-anonymity, and the KAPRA algorithm mechanics, please visit our **[full documentation](https://federissoo.github.io/KAPRA-TimeSeries-Anonymization/)**.
+This project implements the **KAPRA** algorithm to protect time-series data against unified attacks. It ensures privacy by guaranteeing both value-based ($k$-anonymity) and pattern-based ($P$-anonymity) protection.
 
 ## Getting Started
 
