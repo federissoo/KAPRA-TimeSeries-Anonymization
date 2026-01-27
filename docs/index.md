@@ -1,19 +1,17 @@
-# KAPRA: Protecting Time Series Privacy
+# KAPRA: Strategic (k,P)-Anonymity for Time Series Data
 
-This project explores the challenges of anonymizing time series data while preserving its utility for pattern-based analysis.
+This project implements the KAPRA framework to address privacy concerns in time series publishing. While traditional methods focus on hiding numerical values, KAPRA introduces a dual protection model to defend against sophisticated linkage attacks.
 
-## The Core Problem: Beyond Numerical Values
-In time series data, privacy is not just about hiding numbers. An individual's identity is tied to two facets:
-1. **Values ($K_v$):** The exact numerical data (e.g., a specific salary or heart rate).
-2. **Patterns ($K_p$):** The shape or trend of the data over time (e.g., "rapid growth" or "seasonal spikes").
+## The Privacy Challenge: Unified Attacks
+In time series datasets, an individual's identity is exposed through two main channels:
+- **Value Knowledge ($K_v$):** Specific numerical data points at certain timestamps.
+- **Pattern Knowledge ($K_p$):** The shape, trend, or "signature" of the data over time.
 
-Traditional methods like **k-Anonymity** only protect values. If an attacker knows even a small part of your data trend, they can identify you even in a crowd. This is known as a **Unified Attack**.
+When an adversary combines both, they perform a **Unified Attack**, which can identify individuals even when their data is partially obscured.
 
-## Documentation Sections
-To understand how KAPRA solves this, explore the following sections:
+## Documentation Structure
+- [Why k-Anonymity Fails](k-anon-failure.md): Analysis of how pattern-based linkage breaks traditional value-based anonymity.
+- [The KAPRA Solution](kapra-approach.md): Detailed explanation of the (k,P)-Anonymity model and SAX transformation.
 
-### 1. [Why k-Anonymity Fails for Time Series](k-anon-failure.md)
-A practical demonstration of how traditional k-Anonymity leaves users vulnerable to pattern-based tracking.
-
-### 2. [The KAPRA Solution: (k,P)-Anonymity](kapra-approach.md)
-How the KAPRA framework integrates both Value and Pattern protection to ensure robust privacy.
+## Technical Implementation
+The current implementation uses Python and Poetry, processing Quasi-Identifiers (QI) that include both categorical attributes (Dept, Seniority) and temporal sequences (H1 to H8).

@@ -1,17 +1,24 @@
 # The Failure of Traditional k-Anonymity
 
-Traditional k-Anonymity groups $k$ records together so they share the same range of values (Quasi-Identifiers). However, it ignores the **pattern** of the data.
+Traditional k-anonymity protects data by grouping records into **Anonymization Envelopes**. However, as demonstrated in our experiments, protecting values alone is insufficient for time series.
 
-## 🕵️ The Pattern-Linkage Attack
-Imagine a group where $k=2$ (Alice and Bob). Their values are hidden within an "Envelope" $[80, 180]$.
+## Pattern-Linkage Attack
+Even if $k$ records are grouped to share the same range of values, their individual trends can remain unique within that group.
 
-| Record | Anonymization Envelope | **Pattern (Trend)** | Sensitive Data |
-| :--- | :--- | :--- | :--- |
-| **1 (Alice)** | [80 - 180] | **Rising** 📈 | Heart Disease |
-| **2 (Bob)** | [80 - 180] | **Falling** 📉 | Healthy |
+### Case Study: High Value Loss vs. Low Privacy
+In our latest experiment, we processed a group categorized as **HR, Junior**. The data was obscured using intervals, resulting in a **Value Loss (VL)** of **37.6812**.
 
-### Why it fails:
-If an adversary knows that Alice's health is **deteriorating** (Rising trend), they can look at the table and see that only Record 1 matches that pattern. 
-Even though her values are hidden, her identity is revealed with **100% probability** ($P_{breach} = 1$) because her pattern is unique within the group.
+| Record | Dept | Seniority | H1 | H2 | Trend |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | HR | Junior | [0-40] | [3-37] | Rising |
+| 2 | HR | Junior | [0-40] | [3-37] | Falling |
 
-**Conclusion:** k-Anonymity is insufficient for time series because the "shape" of the data acts as a fingerprint.
+
+
+Despite the high Value Loss, the identity is not secure:
+1. **Adversary Knowledge:** The attacker knows the target is a Junior in HR and has a "Rising" activity trend.
+2. **Identification:** By observing the trends within the [0-40] envelope, the attacker can distinguish Alice (Rising) from Bob (Falling).
+3. **Breach:** The identity is revealed with a probability of 1 ($P_{breach} = 1$), rendering the k-anonymity useless against pattern knowledge.
+
+## Partial Pattern Knowledge
+The vulnerability is exacerbated by **Partial Pattern Knowledge**. An adversary only needs to know a segment of the series (e.g., a spike at H4) to successfully link a record to an individual, even if the rest of the sequence is anonymous.
