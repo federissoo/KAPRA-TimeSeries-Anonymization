@@ -40,6 +40,7 @@ def generate_work_activity(n_employees=200):
         
         # Costruzione della riga con EI all'inizio
         row = {
+            'ID': i + 1,
             'Name': name, 
             'Surname': surname, 
             'Dept': dept, 

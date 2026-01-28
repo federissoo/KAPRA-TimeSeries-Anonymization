@@ -3,23 +3,16 @@ import numpy as np
 import sys
 import os
 import time
+
+# Recupero la cartella dove si trova questo file
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Se non è già presente nella lista di ricerca, la aggiungo
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 from sax_utils import ts_to_sax, calculate_pattern_loss
-
-# Add the current directory to path to allow imports if run from elsewhere
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-import importlib.util
-
-# Import Phase 1 logic from k-anon.py (handling hyphen in filename)
-try:
-    spec = importlib.util.spec_from_file_location("k_anon", os.path.join(os.path.dirname(os.path.abspath(__file__)), "k-anon.py"))
-    k_anon = importlib.util.module_from_spec(spec)
-    sys.modules["k_anon"] = k_anon
-    spec.loader.exec_module(k_anon)
-    from k_anon import makeDatasetKAnon, dept_mapping, seniority_mapping
-except Exception as e:
-    print(f"Error importing k-anon: {e}")
-    sys.exit(1)
+from k_anon import makeDatasetKAnon, dept_mapping, seniority_mapping
 from kapra_utils import calculate_envelope_and_vl
 
 class Node:
@@ -207,8 +200,8 @@ def collect_leaves(node):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_path = os.path.join(base_dir, "../data/remote_work_activity_raw.csv")
-    output_path = os.path.join(base_dir, "../data/naive_anonymized.csv")
+    input_path = os.path.join(base_dir, "../docs/data/remote_work_activity_raw.csv")
+    output_path = os.path.join(base_dir, "../docs/data/naive_anonymized.csv")
     
     # Parameters
     K = 3
@@ -227,17 +220,19 @@ def main():
         sys.exit(1)
         
     # Drop identifiers
-    eis = ['Name', 'Surname']
+    eis = ['ID', 'Name', 'Surname']
     df_clean = df.drop(columns=[c for c in eis if c in df.columns])
     
-    qi_cat = ['Dept', 'Seniority']
+    qi = ['Dept', 'Seniority']
     time_cols = [c for c in df.columns if c.startswith('H')]
+    # Do NOT append time_cols to qi for Phase 1 (we handle them via Mondrian)
     
-    # 2. Phase 1: K-anonymity on Categorical Attributes
-    print("Phase 1: Generaling components to K-groups...")
-    dataset_dict = df_clean.to_dict('records')
+    # 2. Phase 1: K-anonymity on Categorical Attributes + Time Series Clustering
+    print("Phase 1: Generaling components to K-groups (K-Anon + Mondrian)...")
+    dataset_dict = df_clean.to_dict('records')  # da csv a lista di dizionari
     # Reuse logic from k-anon.py
-    anon_dataset, levels = makeDatasetKAnon(dataset_dict, K, qi_cat)
+    # Pass only categorical QIs for the finding of candidate blocks
+    anon_dataset, levels = makeDatasetKAnon(dataset_dict, K, qi, time_cols)
     
     if not anon_dataset:
         print("Failed Phase 1: Could not k-anonymize categorical attributes.")
@@ -245,16 +240,21 @@ def main():
         
     print(f"Phase 1 Complete. Levels: {levels}")
     
-    # Group by QI to get K-groups
+    # Group by GroupID (assigned in Phase 1)
     df_ph1 = pd.DataFrame(anon_dataset)
-    grouped = df_ph1.groupby(qi_cat)
+    # Ensure GroupID is present
+    if 'GroupID' not in df_ph1.columns:
+        print("Error: Phase 1 did not assign GroupID.")
+        sys.exit(1)
+        
+    grouped = df_ph1.groupby('GroupID')
     
     final_leaves = []
     
     # 3. Phase 2: Create-tree for each K-group
     print("Phase 2: Node Splitting per K-group...")
     
-    for name, group in grouped:
+    for group_id, group in grouped:
         # Create Root Node for this group
         group_data = group.to_dict('records')
         # Root level = 0? Or 1? 
@@ -269,6 +269,8 @@ def main():
         
         # Collect leaves
         leaves = collect_leaves(root)
+        for l in leaves:
+            l.group_id = group_id
         
         # Filter: handle bad leaves global post-processing?
         # The prompt algorithm steps 12-14 seem to handle bad leaves by merging them LOCALLY.
@@ -304,7 +306,7 @@ def main():
                 else:
                     # If NO good leaves exist (weird), this group failed?
                     # Keep as is?
-                    print(f"  Warning: Group {name} became all bad leaves!")
+                    print(f"  Warning: Group {group_id} became all bad leaves!")
                     pass
         
         final_leaves.extend(good_leaves)
@@ -329,13 +331,23 @@ def main():
             new_row['Value_Loss'] = round(vl, 4)
             new_row['Pattern'] = leaf.pattern
             new_row['Level'] = leaf.level
+            new_row['GroupID'] = leaf.group_id
             final_rows.append(new_row)
             
     df_final = pd.DataFrame(final_rows)
     # Sort for tidiness
-    df_final.sort_values(by=qi_cat, inplace=True)
+    df_final.sort_values(by=['GroupID'], inplace=True)
     
-    df_final.to_csv(output_path, index=False)
+    # Create export version: Drop Value_Loss, Level. Reorder GroupID to front.
+    cols_to_drop = ['Value_Loss', 'Level']
+    df_export = df_final.drop(columns=[c for c in cols_to_drop if c in df_final.columns])
+    
+    # Reorder GroupID to first
+    if 'GroupID' in df_export.columns:
+        cols = ['GroupID'] + [c for c in df_export.columns if c != 'GroupID']
+        df_export = df_export[cols]
+
+    df_export.to_csv(output_path, index=False)
     print(f"Done. Saved to {output_path}")
 
     # --- Metrics Calculation ---
