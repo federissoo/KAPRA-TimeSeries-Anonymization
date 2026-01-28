@@ -1,21 +1,17 @@
-### Le Due Fasi dell'Algoritmo
+## Le Due Fasi dell'Algoritmo
 
 Il processo si divide in due macro-fasi distinte:
 
-1. **Fase di K-anonimato convenzionale:** Viene applicata una procedura di clustering top-down (simile a soluzioni esistenti come quelle di Xu et al.) per raggruppare i record in **k-group**. In questa fase, ogni record viene reso indistinguibile da almeno altri  record basandosi sui valori degli attributi .
+1. **Fase di K-anonimato convenzionale:** Vengono raggruppati i record in **k-group**. In questa fase, ogni record viene reso indistinguibile da almeno altri k-1 record basandosi sui valori dei QI.
 
 
-2. **Fase `create-tree` (creazione dell'albero):** Per ogni k-group formato nella prima fase, l'algoritmo esegue una procedura ricorsiva per suddividere ulteriormente il gruppo in **P-subgroup**, garantendo che ogni sottogruppo contenga almeno  record con la stessa rappresentazione del pattern (PR) .
+2. **Fase create-tree (creazione dell'albero):** Per ogni k-group formato nella prima fase, l'algoritmo esegue una procedura ricorsiva per suddividere ulteriormente il gruppo in **P-subgroup**, garantendo che ogni sottogruppo contenga almeno P record con la stessa rappresentazione del pattern (PR) .
 
+## Funzionamento della Procedura create-tree
 
+Questa è la parte centrale del Naive Algorithm. Per ogni k-group, l'algoritmo cerca di massimizzare il **livello SAX** (la precisione del pattern) rispettando il vincolo P.
 
----
-
-### Funzionamento della Procedura `create-tree`
-
-Questa è la parte centrale del Naive Algorithm. Per ogni k-group, l'algoritmo cerca di massimizzare il **livello SAX** (la precisione del pattern) rispettando il vincolo .
-
-#### 1. Attributi dei Nodi dell'Albero
+### 1. Attributi dei Nodi dell'Albero
 
 Ogni nodo  dell'albero rappresenta un insieme di serie temporali e possiede cinque caratteristiche :
 
@@ -23,11 +19,11 @@ Ogni nodo  dell'albero rappresenta un insieme di serie temporali e possiede cinq
 * **PR:** La rappresentazione simbolica del pattern (stringa SAX) per quel livello.
 * **Members:** Le serie temporali contenute nel nodo che condividono la stessa PR.
 * **Size:** Il numero di membri.
-* **Label:** Un'etichetta che può essere *intermediate* (nodo interno), *good-leaf* (foglia valida con dimensione ) o *bad-leaf* (foglia non valida con dimensione ).
+* **Label:** Un'etichetta che può essere *intermediate* (nodo interno), *good-leaf* (foglia valida con dimensione $\ge P$) o *bad-leaf* (foglia non valida con dimensione $< P$).
 
-#### 2. Processo di Scissione (Node Splitting)
+### 2. Processo di Scissione (Node Splitting)
 
-Partendo dalla radice del k-group (livello 1), l'algoritmo decide come dividere i nodi in base alla loro dimensione ():
+Partendo dalla radice del k-group (livello 1), l'algoritmo decide come dividere i nodi in base alla loro dimensione ($P$):
 
 * **Se la dimensione è $<P$:** Il nodo diventa una **bad-leaf** e la ricorsione si ferma.
 
@@ -40,9 +36,6 @@ Partendo dalla radice del k-group (livello 1), l'algoritmo decide come dividere 
 
 * **Se $N.size \ge 2P$:** Si esegue una **scissione tentativa**. Se l'incremento del livello SAX produce almeno due nodi validi (o un nodo valido e un gruppo di nodi piccoli che, se uniti, raggiungono la dimensione ), la scissione diventa reale .
 
-
-
----
 
 ### Post-elaborazione delle "Bad-Leaves"
 
