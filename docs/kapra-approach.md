@@ -20,9 +20,9 @@ A dataset satisfies the KAPRA model if:
 2. **P-Requirement:** Every record within a group shares the same **Pattern Representation (PR)** with at least $P-1$ others.
 
 ## Top-down vs Bottom-up
-It is possible to adopt a **top-down approach**, in which the dataset is initially partitioned into groups satisfying the k-anonymity requirement and then further refined to meet the P requirement. However, this strategy is not optimal, as it causes a significant loss of patterns and reduces the accuracy of similarity-based queries.
+It is possible to adopt a **top-down approach**, in which the dataset is initially partitioned into groups satisfying the k-anonymity requirement and then further refined to meet the P requirement. However, this strategy is not optimal, as it causes a significant loss of patterns and reduces the accuracy of similarity-based queries. ([Naive Algorithm](naive-algo.md))
 
-KAPRA instead adopts a **bottom-up approach**, in which records are first grouped according to pattern similarity to satisfy the P requirement and only subsequently aggregated to ensure k-anonymity. Although more complex, this strategy allows for better preservation of temporal structures and achieves a better trade-off between privacy protection and data utility.
+KAPRA instead adopts a **bottom-up approach**, in which records are first grouped according to pattern similarity to satisfy the P requirement and only subsequently aggregated to ensure k-anonymity. Although more complex, this strategy allows for better preservation of temporal structures and achieves a better trade-off between privacy protection and data utility. ([KAPRA Algorithm](kapra-algo.md))
 
 ## Pattern Representation (PR) via SAX
 KAPRA utilizes **Symbolic Aggregate Approximation (SAX)** to convert numerical sequences into symbolic strings (e.g., "aabbc").
