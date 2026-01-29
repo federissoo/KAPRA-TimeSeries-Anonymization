@@ -26,7 +26,7 @@ When an adversary combines both, they perform a **Unified Attack**, which can id
 - [The KAPRA Solution](kapra-approach.md)
 
 ## Technical Implementation
-The current implementation uses Python and Poetry, processing Quasi-Identifiers (QI) that include both categorical attributes (Dept, Seniority) and temporal sequences (H1 to H8).
+The current implementation uses Python and Poetry, processing Quasi-Identifiers (QI) that focus on temporal sequences (H1 to H8).
 
 ## Real Results
 - [Naive Algorithm](naive-algo-results.md)

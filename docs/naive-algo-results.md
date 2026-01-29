@@ -13,34 +13,34 @@
 # Risultati Algoritmo Naive (con Mondrian Clustering)
 
 ## Panoramica Approccio
-L'algoritmo implementato combina la **K-Anonymity** per gli attributi categorici con una tecnica di clustering **Mondrian (Top-Down Greedy Partitioning)** per le serie temporali.
+L'algoritmo implementato utilizza una tecnica di clustering **Mondrian (Top-Down Greedy Partitioning)** per le serie temporali, combinata con un algoritmo **Naive (k,P)-anonymity** basato su SAX.
 
-1.  **Fase 1 (Raggruppamento Ibrido)**:
-    *   Identifica i gruppi omogenei per gli attributi categorici (`Dept`, `Seniority`).
-    *   All'interno di ogni gruppo categorico, applica ricorsivamente il partizionamento **Mondrian** sulle colonne temporali (`H1`...`H8`).
-    *   L'obiettivo è minimizzare la **Value Loss (VL)**, ovvero creare gruppi dove le serie temporali sono il più simili possibile (invarianza euclidea), rispettando il vincolo di cardinalità $k$.
-    *   Ogni partizione finale riceve un `GroupID` univoco.
+1.  **Fase 1 (Partizionamento)**:
+    *   Applica il partizionamento **Mondrian** sulle colonne temporali (`H1`...`H8`) per creare gruppi preliminari che soddisfano $k$.
+    *   L'obiettivo è minimizzare la **Value Loss (VL)** (invarianza euclidea).
 
-2.  **Fase 2 (Generazione Output)**:
-    *   Viene generato un dataset anonimizzato dove ogni serie temporale è sostituita dal suo "envelope" (intervallo min-max) all'interno del gruppo.
-    *   I record sono ordinati per `GroupID`.
+2.  **Fase 2 (Raffinamento SAX)**:
+    *   Per ogni gruppo, costruisce un albero di raffinamento basato su rappresentazioni SAX.
+    *   Parte dal livello SAX 1 ("aaaa") e tenta di aumentare granularità finché il vincolo $P$ è soddisfatto.
+    *   Assicura che ogni sottogruppo finale (foglia) condivida lo stesso pattern SAX valido.
 
 ## Metriche di Performance
 
-Esecuzione su dataset di test (200 record, K=3, P=2):
+Esecuzione su dataset strutturato (200 record, K=8, P=2):
 
 | Metrica | Valore | Note |
 | :--- | :--- | :--- |
-| **Tempo di Esecuzione** | ~0.55 sec | Molto rapido, complessità contenuta ($O(N \log N)$ per il sort di Mondrian). |
-| **Avg Instant Value Loss (VL)** | **18.08** | Notevolmente ridotta rispetto all'approccio naive puro (~21.7). Indica una maggiore precisione dei dati anonimizzati. |
-| **Avg Pattern Loss (PL)** | **0.61** | Bassa distorsione della forma delle serie temporali. |
-| **Range Query Error** | **19.01%** | Errore relativo medio su query di intervallo simulate. |
+| **Tempo di Esecuzione** | Rapido | Complessità contenuta. |
+| **Avg Instant Value Loss (VL)** | ~8.4 | Molto bassa grazie ai pattern strutturati. |
+| **Avg Pattern Loss (PL)** | ~0.09 | Bassissima distorsione della forma. |
+| **Range Query Error** | ~8% | Errore relativo contenuto. |
 
 ## Struttura Dataset
 Il file CSV prodotto (`naive_anonymized.csv`) presenta la seguente struttura:
-*   **GroupID**: Identificativo del gruppo di anonimato (K-group).
-*   **Dept, Seniority**: Quasi-Identificatori categorici generalizzati.
+*   **GroupID**: Identificativo del gruppo di anonimato.
 *   **H1...H8**: Valori delle serie temporali generalizzati come intervalli `[min-max]`.
+*   **Performance_SD**: Attributo sensibile (invariato).
+*   **Pattern**: Rappresentazione SAX del gruppo (es. "aaaa", "aabc").
 *   **Performance_SD**: Attributo sensibile (invariato).
 *   **Pattern**: Rappresentazione SAX del gruppo (metadato utile per analisi).
 

@@ -38,6 +38,7 @@ def paa(series, n_segments):
 # Breakpoints for N(0,1) from SAX literature
 # Keys are alphabet sizes
 SAX_BREAKPOINTS = {
+    2: [0],
     3: [-0.43, 0.43],
     4: [-0.67, 0, 0.67],
     5: [-0.84, -0.25, 0.25, 0.84],
@@ -48,37 +49,30 @@ SAX_BREAKPOINTS = {
     10: [-1.28, -0.84, -0.52, -0.25, 0, 0.25, 0.52, 0.84, 1.28]
 }
 
-def ts_to_sax(series, n_segments, alphabet_size):
+# Cerca la funzione ts_to_sax
+def ts_to_sax(series, level, n_segments=4): 
     """
     Convert a time series to a SAX string.
-    Steps:
-    1. Z-normalization
-    2. PAA (reduce to n_segments)
-    3. Discretization using Gaussian breakpoints
     """
     # 1. Z-normalization
     zn_series = z_normalization(series)
     
     # 2. PAA
+    # Controllo di sicurezza se la serie è più corta dei segmenti richiesti
+    n_segments = min(n_segments, len(series))
+    
     paa_rep = paa(zn_series, n_segments)
     
     # 3. Discretization
-    if alphabet_size not in SAX_BREAKPOINTS:
-        raise ValueError(f"Alphabet size {alphabet_size} not supported in efficient implementation. Supported: {list(SAX_BREAKPOINTS.keys())}")
+    if level not in SAX_BREAKPOINTS:
+        # Fallback per livelli non standard (opzionale, per sicurezza)
+        if level < 3: return "a" * n_segments
+        raise ValueError(f"Alphabet size {level} unsupported")
         
-    breakpoints = SAX_BREAKPOINTS[alphabet_size]
+    breakpoints = SAX_BREAKPOINTS[level]
     
-    # Map PAA values to symbols
-    # ASCII 'a' is 97
     sax_string = []
     for val in paa_rep:
-        # Find the interval index
-        # searchsorted returns the index where val would be inserted to maintain order
-        # For breakpoints [-0.67, 0, 0.67]:
-        # val < -0.67 -> idx 0 ('a')
-        # -0.67 <= val < 0 -> idx 1 ('b')
-        # 0 <= val < 0.67 -> idx 2 ('c')
-        # val >= 0.67 -> idx 3 ('d')
         idx = np.searchsorted(breakpoints, val)
         sax_string.append(chr(97 + idx))
         
@@ -93,50 +87,84 @@ def sax_to_values(sax_string, alphabet_size, original_length):
         raise ValueError(f"Alphabet size {alphabet_size} not supported.")
         
     breakpoints = SAX_BREAKPOINTS[alphabet_size]
-    # Add -inf and +inf for first and last bins logic
-    # But usually we just use the breakpoints.
-    # The bins are: (-inf, b0), [b0, b1), [b1, b2), ... [bk, +inf)
-    # We need centroids. 
-    # For standard normal, we can precompute centroids or just take midpoints of breakpoints (clamping ends).
     
     # Simple midpoint approximation (clamped at +/- 3 sigma)
+    # This rebuilds the 'reconstructed' values based on the SAX string
     extended_bps = [-3] + list(breakpoints) + [3]
     
     values = []
     for char in sax_string:
         idx = ord(char) - 97
-        # Bin is extended_bps[idx] to extended_bps[idx+1]
-        low = extended_bps[idx]
-        high = extended_bps[idx+1]
-        centroid = (low + high) / 2
-        values.append(centroid)
-        
-    # values is now a PAA vector of length len(sax_string)
-    # We need to expand it to original_length
-    n_segments = len(sax_string)
-    segment_size = original_length // n_segments
-    remainder = original_length % n_segments
-    
-    reconstructed = []
-    for i, val in enumerate(values):
-        count = segment_size + (1 if i < remainder else 0)
-        reconstructed.extend([val] * count)
-        
-    return np.array(reconstructed)
+        if 0 <= idx < len(extended_bps) - 1:
+            low = extended_bps[idx]
+            high = extended_bps[idx+1]
+            centroid = (low + high) / 2
+            values.append(centroid)
+        else:
+            # Should not happen if char is valid
+            values.append(0)
+            
+    # Since n_segments might be < original_length, we need to expand PAA
+    values = np.array(values)
+    if len(values) != original_length:
+        # Repeat values to match original length
+        # Assuming equal sized segments (approx)
+        return np.repeat(values, np.ceil(original_length / len(values)))[:original_length]
+    return values
+
+def calculate_feature_vector(series):
+    """
+    Construct the feature vector p(Q) as the set of all differentials
+    between every pair of attributes: q_i - q_j.
+    """
+    series = np.array(series)
+    n = len(series)
+    features = []
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                features.append(series[i] - series[j])
+    return np.array(features)
 
 def calculate_pattern_loss(series, sax_string, alphabet_size):
     """
-    Calculate Pattern Loss: Euclidean distance between Z-normalized series 
-    and its SAX reconstruction.
+    Calculate Pattern Loss (PL) as the cosine distance between the 
+    feature vector of the original series and the reconstructed series.
+    
+    PL(Q, P) = CosineDistance(p(Q), p*(Q))
+             = 1 - CosineSimilarity
     """
+    # Original Z-normalized series
     zn = z_normalization(series)
+    
+    # Reconstructed series from SAX
     rec = sax_to_values(sax_string, alphabet_size, len(series))
     
-    # Euclidean Distance
-    dist = np.linalg.norm(zn - rec)
+    # Feature Vectors
+    fv_orig = calculate_feature_vector(zn)
+    fv_rec = calculate_feature_vector(rec)
     
-    # Normalize by Length? Usually just distance.
-    # Or RMSE? "Misura la distorsione".
-    # Let's use RMSE to be comparable across different lengths/datasets.
-    rmse = dist / np.sqrt(len(series))
-    return rmse
+    # Cosine Similarity
+    # sim = (A . B) / (||A|| * ||B||)
+    
+    dot_product = np.dot(fv_orig, fv_rec)
+    norm_orig = np.linalg.norm(fv_orig)
+    norm_rec = np.linalg.norm(fv_rec)
+    
+    if norm_orig == 0 or norm_rec == 0:
+        # If one vector is zero, similarity is undefined (or 0).
+        # Loss is max (1.0 or high?)
+        # If both are zero (flat series), they are identical -> Loss 0.
+        if norm_orig == 0 and norm_rec == 0:
+            return 0.0
+        return 1.0
+        
+    cosine_sim = dot_product / (norm_orig * norm_rec)
+    
+    # Cosine Distance
+    # Strictly, distance = 1 - similarity
+    # Similarity is in [-1, 1]. Distance in [0, 2].
+    # Usually normalized to [0,1] or just raw distance.
+    # Paper implies distance.
+    
+    return 1.0 - cosine_sim

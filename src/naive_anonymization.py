@@ -12,7 +12,7 @@ if current_dir not in sys.path:
     sys.path.append(current_dir)
 
 from sax_utils import ts_to_sax, calculate_pattern_loss
-from k_anon import makeDatasetKAnon, dept_mapping, seniority_mapping
+from k_anon import makeDatasetKAnon
 from kapra_utils import calculate_envelope_and_vl
 
 class Node:
@@ -27,20 +27,24 @@ class Node:
     def __repr__(self):
         return f"Node(level={self.level}, pattern='{self.pattern}', size={self.size}, label='{self.label}')"
 
-def get_sax_pattern(series, level, alphabet_size=4):
+def get_sax_pattern(series, level):
     """
     Generate SAX pattern for a time series.
-    Level = word length (number of segments).
+    Level = Alphabet Size.
     """
     if level <= 0:
-        return "" # Root level, no pattern
-    return ts_to_sax(series, level, alphabet_size)
+        return "" # Root level
+    # Use level as alphabet size.
+    return ts_to_sax(series, level)
 
 def naive_node_splitting(node, P, max_level, time_cols):
     """
     Recursive Node Splitting Algorithm.
-    Follows logical flow from user request.
     """
+    # If the caller marked this as good-leaf (e.g. child_merge), stop.
+    if node.label == "good-leaf":
+        return
+
     # 2. Se N.size < P allora:
     if node.size < P:
         node.label = "bad-leaf"
@@ -54,33 +58,28 @@ def naive_node_splitting(node, P, max_level, time_cols):
     # 6. Altrimenti se P <= N.size < 2*P allora:
     if P <= node.size < 2 * P:
         # 7. Massimizza N.level senza dividere il nodo
-        # We need to find the max level where all members still share the same pattern.
-        # However, the prompt says "Massimizza N.level senza dividere". 
-        # This implies we can increase the level as long as the pattern remains unique for ALL members?
-        # Or does it mean we just stop here?
-        # "8. N.label = good-leaf // Non si divide per evitare di creare bad-leaves"
-        # We will keep it simple: assume we just mark it as good-leaf at current level.
-        # Optimizing level "without splitting" would require checking if all members map to same pattern at higher levels.
-        # Let's try to increase level checks until they diverge.
-        
+        # Loop to increase level as long as ALL records share the same pattern
+        current_level = node.level
         current_pattern = node.pattern
-        next_level = node.level + 1
         
-        while next_level <= max_level:
-            # Check if all members have same pattern at next_level
+        while current_level < max_level:
+            next_level = current_level + 1
             patterns = []
             for row in node.data:
                 ts = [row[c] for c in time_cols]
                 patterns.append(get_sax_pattern(ts, next_level))
             
+            # Check if all patterns are identical
             if len(set(patterns)) == 1:
-                # Success, upgrade node
-                node.level = next_level
-                node.pattern = patterns[0]
-                next_level += 1
+                current_level = next_level
+                current_pattern = patterns[0]
             else:
+                # Divergence found, stop at current_level
                 break
         
+        # Update node state
+        node.level = current_level
+        node.pattern = current_pattern
         node.label = "good-leaf"
         return
 
@@ -97,11 +96,6 @@ def naive_node_splitting(node, P, max_level, time_cols):
             groups[pat] = []
         groups[pat].append(row)
     
-    # 11. Se il nodo può essere diviso (genera figli con size >= P)??
-    # The logic in prompt is: "Se il nodo può essere diviso (genera figli con size >= P)"
-    # BUT line 12 says "Se la somma delle dimensioni dei figli piccoli (TB-nodes) >= P"
-    # This implies we create ALL children first, then check sizes.
-    
     valid_children = [] # Size >= P
     small_children = [] # Size < P (TB-nodes)
     
@@ -112,10 +106,6 @@ def naive_node_splitting(node, P, max_level, time_cols):
         else:
             small_children.append(child)
     
-    # 11. Condition "Se il nodo può essere diviso"
-    # If we have NO valid children and NO small children capable of merging... then effectively we can't split usefully?
-    # Let's follow line 12 logic.
-    
     # 12. Se la somma delle dimensioni dei figli piccoli (TB-nodes) >= P allora:
     total_small_size = sum(c.size for c in small_children)
     
@@ -125,68 +115,28 @@ def naive_node_splitting(node, P, max_level, time_cols):
         for c in small_children:
             merged_data.extend(c.data)
         
-        # 14. Imposta livello di child_merge = N.level
-        # The prompt says "level of child_merge = N.level" (parent level)
-        # So it keeps the generic pattern of the parent.
+        # 14. Imposta livello di child_merge = N.level (Parent Level)
+        # This effectively resets the specific patterns they had at level+1.
+        # They share the parent's pattern.
         child_merge = Node(merged_data, node.level, node.pattern, len(merged_data), label="intermediate")
         
-        # We treat child_merge as a valid child now? 
-        # Line 15 says "Invocazione ricorsiva su tutti i figli validi generati"
-        # Since child_merge has size >= P, it is valid.
+        # TO AVOID LOOP: We must recognize this node shouldn't be split again at level+1.
+        child_merge.label = "good-leaf"
         valid_children.append(child_merge)
-        small_children = [] # All merged
+        small_children = [] # Handled matches
     
-    # Check if we have any valid children to recurse on
-    if len(valid_children) > 0:
+    # Any remaining small_children (if sum < P) must be added to children
+    # so they can be visited and labeled "bad-leaf" by the recursion base case.
+    valid_children.extend(small_children)
+    
+    if valid_children:
         node.children = valid_children
         # 15. Invocazione ricorsiva su tutti i figli validi generati
         for child in node.children:
-            # Important: child_merge has level = node.level.
-            # If we recurse on child_merge, we might infinite loop if we don't catch it.
-            # But naive_node_splitting handles logic. 
-            # If child_merge.level == node.level, next iteration it will try to split to level+1 again!
-            # Wait, if child_merge acts as a new node, it presumably contains the "hard to split" rows.
-            # If we try to split them again at level+1, we will get the SAME small fragments?
-            # Yes, likely. 
-            # So child_merge should probably be a LEAF?
-            # Or we should flag it not to be split?
-            # The prompt doesn't say "label = good-leaf". It says "Invocazione ricorsiva".
-            # BUT: if it's the exact same data and we try same split, we loop.
-            # UNLESS "child_merge" logic implies we stop splitting it using this strategy?
-            # Re-reading line 14: "Imposta livello di child_merge = N.level".
-            # If we recurse, `naive_node_splitting` starts again.
-            # If size >= 2P, it tries to split at level+1.
-            # It will find `small_children` again (the same ones).
-            # It will merge them again.
-            # Infinite recursion.
-            
-            # Correction: Maybe child_merge should be marked as good-leaf?
-            # OR we simply don't recurse on child_merge?
-            # Line 17 says "Altrimenti: N.label = good-leaf".
-            
-            # FIX: If we created a child_merge with level == node.level, 
-            # we should probably NOT recurse on it to avoid infinite loop, 
-            # OR we should treat it as a good-leaf immediately.
-            # Actually, `naive-algo.md` says: "I record contenuti in questi nodi vengono ri-inseriti (fusi) nella "good-leaf" più simile".
-            # But the detailed steps (12-14) in prompt seem to replace that post-processing or define a local version.
-            # "Crea un nuovo nodo unificandoli... Imposta livello ... Invocazione ricorsiva".
-            
-            # If I recurse on child_merge (level L), it will try to split at L+1.
-            # It will fail to find valid children (they were small).
-            # It will find small children sum >= P (yes, that's why we merged).
-            # It will merge them again...
-            
-            # To avoid loop, maybe checks if we JUST merged?
-            # Or maybe child_merge is good-leaf?
-            # Let's assume child_merge is a good-leaf because we know we can't split it further at L+1.
-            
-            if child.level == node.level:
-                child.label = "good-leaf"
-            else:
-                 naive_node_splitting(child, P, max_level, time_cols)
+            naive_node_splitting(child, P, max_level, time_cols)
     else:
-        # 16. Altrimenti (nessun figlio valido generato, nemmeno merging)
-        # 17. N.label = good-leaf
+        # 16. Altrimenti (nessun figlio valido generato)
+        # 17. N.label = good-leaf (Retract split, make parent a leaf)
         node.children = []
         node.label = "good-leaf"
 
@@ -198,18 +148,28 @@ def collect_leaves(node):
         leaves.extend(collect_leaves(child))
     return leaves
 
+def calculate_distance(ts_data, leaf_pattern, level):
+    """
+    Calculate distance between a raw time series and a leaf's pattern/reconstruction.
+    Uses Patterns Loss metric.
+    """
+    # Assuming leaf.pattern represents the centroid reconstruction
+    try:
+        return calculate_pattern_loss(ts_data, leaf_pattern, level)
+    except:
+        return float('inf')
+
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_path = os.path.join(base_dir, "../docs/data/remote_work_activity_raw.csv")
+    input_path = os.path.join(base_dir, "../docs/data/dataset_raw.csv")
     output_path = os.path.join(base_dir, "../docs/data/naive_anonymized.csv")
     
     # Parameters
-    K = 3
+    K = 8
     P = 2
-    MAX_LEVEL = 8 # Max SAX word length (since we have 8 columns H1..H8, max meaningful is 8?)
-    # Prompt says "max-level". Usually SAX word length.
+    MAX_LEVEL = 5 # SAX Alphabet Size Limit
     
-    print(f"--- Naive Naive Node Splitting Algorithm (K={K}, P={P}) ---")
+    print(f"--- Naive (k,P)-Anonymization Algorithm (K={K}, P={P}) ---")
     start_time = time.time()
     
     # 1. Load Data
@@ -223,91 +183,84 @@ def main():
     eis = ['ID', 'Name', 'Surname']
     df_clean = df.drop(columns=[c for c in eis if c in df.columns])
     
-    qi = ['Dept', 'Seniority']
+    # qi = ['Dept', 'Seniority'] # Removed
+    qi = [] 
     time_cols = [c for c in df.columns if c.startswith('H')]
-    # Do NOT append time_cols to qi for Phase 1 (we handle them via Mondrian)
     
-    # 2. Phase 1: K-anonymity on Categorical Attributes + Time Series Clustering
-    print("Phase 1: Generaling components to K-groups (K-Anon + Mondrian)...")
-    dataset_dict = df_clean.to_dict('records')  # da csv a lista di dizionari
-    # Reuse logic from k-anon.py
-    # Pass only categorical QIs for the finding of candidate blocks
-    anon_dataset, levels = makeDatasetKAnon(dataset_dict, K, qi, time_cols)
+    # 2. Phase 1: K-anonymity on Categorical Attributes
+    print("Phase 1: Generaling components to K-groups...")
+    dataset_dict = df_clean.to_dict('records')
+    anon_dataset, ph1_levels = makeDatasetKAnon(dataset_dict, K, qi, time_cols)
     
     if not anon_dataset:
-        print("Failed Phase 1: Could not k-anonymize categorical attributes.")
+        print("Failed Phase 1.")
         sys.exit(1)
         
-    print(f"Phase 1 Complete. Levels: {levels}")
+    print(f"Phase 1 Complete.")
     
-    # Group by GroupID (assigned in Phase 1)
     df_ph1 = pd.DataFrame(anon_dataset)
-    # Ensure GroupID is present
-    if 'GroupID' not in df_ph1.columns:
-        print("Error: Phase 1 did not assign GroupID.")
-        sys.exit(1)
-        
     grouped = df_ph1.groupby('GroupID')
     
     final_leaves = []
     
-    # 3. Phase 2: Create-tree for each K-group
+    # 3. Phase 2: Node Splitting per K-group
     print("Phase 2: Node Splitting per K-group...")
     
     for group_id, group in grouped:
-        # Create Root Node for this group
         group_data = group.to_dict('records')
-        # Root level = 0? Or 1? 
-        # If max-level is SAX length, starting at 1 makes sense (1 segment).
-        # Let's start at level 1 (1 segment average).
-        # "PR" for level 1 is usually just "a" (or similar simple string).
+        # Start at Level 1 (Coarsest granularity "aaaa")
+        initial_level = 1
         
-        root = Node(group_data, level=1, pattern="*", size=len(group_data))
+        # Calculate initial pattern from the first record (representative)
+        # All records at level 1 should produce the same "aaaa" pattern given our logic
+        first_ts = [group_data[0][c] for c in time_cols]
+        initial_pattern = get_sax_pattern(first_ts, initial_level)
         
-        # Run Algorithm
+        root = Node(group_data, level=initial_level, pattern=initial_pattern, size=len(group_data))
+        
         naive_node_splitting(root, P, MAX_LEVEL, time_cols)
         
-        # Collect leaves
         leaves = collect_leaves(root)
         for l in leaves:
             l.group_id = group_id
         
-        # Filter: handle bad leaves global post-processing?
-        # The prompt algorithm steps 12-14 seem to handle bad leaves by merging them LOCALLY.
-        # Step 3 and 17 label valid nodes as 'good-leaf'.
-        # Step 2 labels really small nodes as 'bad-leaf'.
-        # If any 'bad-leaf' remains (e.g. from a split where small children sum < P), 
-        # we need to handle them.
-        
         good_leaves = [l for l in leaves if l.label == "good-leaf"]
         bad_leaves = [l for l in leaves if l.label == "bad-leaf"]
         
-        # Post-processing for remaining bad leaves (from Step 60 in `naive-algo.md`)
-        # "I record contenuti in questi nodi vengono ri-inseriti (fusi) nella 'good-leaf' più simile"
-        
+        # Post-processing: Merge bad leaves
         if bad_leaves:
-            # print(f"  - Found {len(bad_leaves)} bad leaves to merge.")
-            for bl in bad_leaves:
-                # Find nearest good leaf
-                # Distance metric: Pattern similarity? Or just attach to any valid sibling?
-                # `naive-algo.md` says "più simile in termini di pattern".
-                # For simplicity, we attach to largest good leaf in same group?
-                # Or based on SAX pattern distance.
-                
-                # If no good leaves in this group (rare if group was size >= K >= P),
-                # we might be in trouble. But K >= P usually.
-                
-                if good_leaves:
-                    # Simple heuristic: Attach to first good leaf
-                    target = good_leaves[0] 
-                    target.data.extend(bl.data)
-                    target.size += bl.size
-                    # Pattern remains target's pattern
-                else:
-                    # If NO good leaves exist (weird), this group failed?
-                    # Keep as is?
-                    print(f"  Warning: Group {group_id} became all bad leaves!")
-                    pass
+            if not good_leaves:
+                 # If all bad, force merge all into one good leaf (fallback)
+                 merged_all = Node([], 2, "*", 0, "good-leaf")
+                 for l in bad_leaves:
+                     merged_all.data.extend(l.data)
+                 merged_all.size = len(merged_all.data)
+                 merged_all.group_id = group_id
+                 good_leaves = [merged_all]
+            else:
+                for bl in bad_leaves:
+                    # Find nearest good leaf
+                    best_target = None
+                    min_dist = float('inf')
+                    
+                    # Compute centroid of bad leaf for efficiency?
+                    # Or avg distance of all rows?
+                    # Let's take the first row as representative or compute mean series.
+                    bl_matrix = np.array([[row[c] for c in time_cols] for row in bl.data])
+                    bl_mean_ts = np.mean(bl_matrix, axis=0)
+                    
+                    for gl in good_leaves:
+                        # Distance between BadLeaf Mean TS and GoodLeaf Pattern
+                        # The GoodLeaf pattern reconstruction depends on its Level.
+                        d = calculate_pattern_loss(bl_mean_ts, gl.pattern, gl.level)
+                        if d < min_dist:
+                            min_dist = d
+                            best_target = gl
+                    
+                    if best_target:
+                        best_target.data.extend(bl.data)
+                        best_target.size += bl.size
+                        # Do NOT update pattern/level. They just get absorbed.
         
         final_leaves.extend(good_leaves)
         
@@ -315,34 +268,47 @@ def main():
     print("Constructing final anonymized dataset...")
     final_rows = []
     
+    total_pl = 0
+    total_records = 0
+    
     for leaf in final_leaves:
-        # Calculate envelope for the cluster
         cluster_data = [[row[c] for c in time_cols] for row in leaf.data]
         lower, upper, vl = calculate_envelope_and_vl(cluster_data)
         
+        leaf_pattern = leaf.pattern
+        leaf_level = leaf.level
+        
         for row in leaf.data:
             new_row = row.copy()
-            # QI are already anonymized from Phase 1
-            
-            # Anonymize indices
             for i, col in enumerate(time_cols):
                 new_row[col] = f"[{lower[i]}-{upper[i]}]"
             
             new_row['Value_Loss'] = round(vl, 4)
-            new_row['Pattern'] = leaf.pattern
-            new_row['Level'] = leaf.level
+            new_row['Pattern'] = leaf_pattern
+            new_row['Level'] = leaf_level
             new_row['GroupID'] = leaf.group_id
             final_rows.append(new_row)
             
+            # Pattern Loss Metric
+            ts = [row[c] for c in time_cols]
+            try:
+                # If level < 3 (e.g. root wasn't split), we can't calc PL via SAX?
+                # If leaf.level < 3 (e.g. 2), we treat it as no pattern?
+                if leaf_level >= 3:
+                     pl = calculate_pattern_loss(ts, leaf_pattern, leaf_level)
+                else:
+                     pl = 0 # Or max?
+                total_pl += pl
+            except Exception as e:
+                pass
+            total_records += 1
+            
     df_final = pd.DataFrame(final_rows)
-    # Sort for tidiness
     df_final.sort_values(by=['GroupID'], inplace=True)
     
-    # Create export version: Drop Value_Loss, Level. Reorder GroupID to front.
-    cols_to_drop = ['Value_Loss', 'Level']
+    # Export
+    cols_to_drop = ['Value_Loss', 'Level'] # Keep Pattern? Maybe.
     df_export = df_final.drop(columns=[c for c in cols_to_drop if c in df_final.columns])
-    
-    # Reorder GroupID to first
     if 'GroupID' in df_export.columns:
         cols = ['GroupID'] + [c for c in df_export.columns if c != 'GroupID']
         df_export = df_export[cols]
@@ -350,58 +316,15 @@ def main():
     df_export.to_csv(output_path, index=False)
     print(f"Done. Saved to {output_path}")
 
-    # --- Metrics Calculation ---
+    # --- Metrics ---
     print("\n--- Evaluation Metrics ---")
     
-    # 1. Computational Complexity (proxied by Execution Time)
     end_time = time.time()
     print(f"Total Execution Time: {end_time - start_time:.4f} seconds")
-    print(f"Theoretical Complexity: O(N * MaxLevel) = O({len(df)} * {MAX_LEVEL})")
-
-    # 2. Information Loss
-    # VL (Instant Value Loss) - already calculated per record, let's avg
+    
     avg_vl = df_final['Value_Loss'].mean()
     print(f"Average Instant Value Loss (VL): {avg_vl:.4f}")
     
-    # PL (Pattern Loss)
-    # We need to calculate PL for every record: Dist(Original_Z, Reconstructed_Z_from_SAX)
-    # We need to re-match the original data to the anonymized data.
-    # Since we dropped IDs (Name, Surname) and sorted, matching is hard.
-    # However, we have the `leaf.data` which contains the rows.
-    # We can calculate PL *during* the construction loop or re-iterate leaves.
-    
-    # Let's calculate PL during construction phase to be accurate (while we have the raw row).
-    # Re-calculating using a separate loop over `final_leaves` before creating `df_final`
-    
-    total_pl = 0
-    total_records = 0
-    
-    for leaf in final_leaves:
-        pattern = leaf.pattern
-        level = leaf.level
-        
-        # Reconstruct pattern values (centroids)
-        # Handle case where pattern is empty or "*" (Level 0/1?)
-        # If level=1, pattern might be empty or length 1 depending on impl.
-        # Our get_sax_pattern returns "" for level <= 0.
-        # Actually standard SAX level 1 -> 1 segment.
-        
-        # If pattern is missing/empty, treat as max loss? Or just mean of series?
-        # Assuming valid patterns for good leaves.
-        
-        # For each row in leaf
-        for row in leaf.data:
-            ts = [row[c] for c in time_cols]
-            # Calculate PL: Dist(Z(ts), Reconstructed(Pattern))
-            # Need to import calculate_pattern_loss
-            try:
-                pl = calculate_pattern_loss(ts, pattern, alphabet_size=4)
-            except Exception:
-                pl = 0 # Fallback
-            
-            total_pl += pl
-            total_records += 1
-            
     avg_pl = total_pl / total_records if total_records > 0 else 0
     print(f"Average Pattern Loss (PL): {avg_pl:.4f}")
 
