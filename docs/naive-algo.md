@@ -27,6 +27,11 @@ Il processo si divide in due macro-fasi sequenziali:
 
 1. **Fase 1: Partizionamento (Mondrian)**
 Vengono raggruppati i record in **k-group** basandosi sui valori delle serie temporali (Value Domain). L'algoritmo Mondrian divide ricorsivamente il dataset cercando di minimizzare l'ampiezza dell'envelope (Instant Value Loss) finché i gruppi non possono più essere divisi senza violare la dimensione minima  (quindi ).
+![alt text](split_example.png)
+
+2. Una volta creati i gruppi, l'algoritmo valuta la qualità dell'anonimizzazione calcolando la Value Loss (VL). Per ogni gruppo, viene definito un "Envelope" (una fascia che racchiude tutte le serie temporali del gruppo tra un limite minimo e massimo). La VL quantifica l'ampiezza media di questa fascia: più il valore è basso, più le serie nel gruppo sono simili tra loro e minore è la perdita di precisione dei dati.
+![alt text](vl_example.png)
+
 2. **Fase 2: Raffinamento del Pattern (Naive Node Splitting)**
 Per ogni *k-group* formato, l'algoritmo esegue una procedura ricorsiva per suddividere ulteriormente il gruppo in **P-subgroup**, cercando di massimizzare il dettaglio del pattern (Livello SAX).
 

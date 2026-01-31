@@ -34,7 +34,6 @@ def get_sax_pattern(series, level):
     """
     if level <= 0:
         return "" # Root level
-    # Use level as alphabet size.
     return ts_to_sax(series, level)
 
 def naive_node_splitting(node, P, max_level, time_cols):
@@ -179,18 +178,16 @@ def main():
         print(f"Error: {input_path} not found.")
         sys.exit(1)
         
-    # Drop identifiers
+    # Drop EI
     eis = ['ID', 'Name', 'Surname']
     df_clean = df.drop(columns=[c for c in eis if c in df.columns])
     
-    # qi = ['Dept', 'Seniority'] # Removed
-    qi = [] 
     time_cols = [c for c in df.columns if c.startswith('H')]
     
-    # 2. Phase 1: K-anonymity on Categorical Attributes
-    print("Phase 1: Generaling components to K-groups...")
+    # 2. Phase 1: Mondrian Partitioning on Time Series
+    print("Phase 1: Partitioning dataset into K-groups (Time Series Clustering)...")
     dataset_dict = df_clean.to_dict('records')
-    anon_dataset, ph1_levels = makeDatasetKAnon(dataset_dict, K, qi, time_cols)
+    anon_dataset, ph1_levels = makeDatasetKAnon(dataset_dict, K, time_cols=time_cols)
     
     if not anon_dataset:
         print("Failed Phase 1.")

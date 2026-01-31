@@ -1,6 +1,5 @@
 import numpy as np
 
-
 def z_normalization(series):
     """
     Apply Z-normalization to a time series: (x - mu) / sigma.
@@ -54,16 +53,13 @@ def ts_to_sax(series, level, n_segments=4):
     """
     Convert a time series to a SAX string.
     """
-    # 1. Z-normalization
+    # Z-normalization
     zn_series = z_normalization(series)
     
-    # 2. PAA
-    # Controllo di sicurezza se la serie è più corta dei segmenti richiesti
-    n_segments = min(n_segments, len(series))
-    
+    # PAA - da 8 dati a 4
     paa_rep = paa(zn_series, n_segments)
     
-    # 3. Discretization
+    # Discretization
     if level not in SAX_BREAKPOINTS:
         # Fallback per livelli non standard (opzionale, per sicurezza)
         if level < 3: return "a" * n_segments
@@ -74,7 +70,7 @@ def ts_to_sax(series, level, n_segments=4):
     sax_string = []
     for val in paa_rep:
         idx = np.searchsorted(breakpoints, val)
-        sax_string.append(chr(97 + idx))
+        sax_string.append(chr(97 + idx)) # A + idx
         
     return "".join(sax_string)
 
