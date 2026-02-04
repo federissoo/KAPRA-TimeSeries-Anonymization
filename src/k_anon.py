@@ -71,13 +71,13 @@ def calculate_partition_cost(partitions, time_cols):
     total_vl = 0
     total_records = 0
     
-    for part in partitions:
-        _, _, vl = calculate_envelope_and_vl(pd.DataFrame(part)[time_cols]) # calcolo l'envelope e il value loss per ogni partizione
+    for part in partitions: # per ogni gruppo
+        _, _, vl = calculate_envelope_and_vl(pd.DataFrame(part)[time_cols]) # calcolo l'envelope e il value loss 
         total_vl += (vl * len(part)) # peso il value loss per la dimensione del gruppo
         total_records += len(part) # calcolo il numero totale di record
         
-    if total_records == 0: return float('inf') # se non ho record, restituisco infinito
-    return total_vl / total_records # calcolo il value loss medio
+    if total_records == 0: return float('inf') # se non ho record, restituisco infinito 
+    return total_vl / total_records # calcolo il value loss medio di tutto il dataset 
 
 def makeDatasetKAnon(dataset, k, time_cols=None):
     """
@@ -108,17 +108,17 @@ def makeDatasetKAnon(dataset, k, time_cols=None):
         partitions = partition_dataset(group_list, k, time_cols) # funzione che implementa la logica di partizionamento Mondrian
         all_partitions.extend(partitions) # estendo la lista di liste di dizionari (partizioni)
     
-    # Calculate Cost
+    # Calcolo il VL medio di tutto il dataset
     avg_vl = calculate_partition_cost(all_partitions, time_cols)
     
-    # Assign GroupIDs
+    # Assegno i GroupIDs
     final_dataset = []
     for gid, part in enumerate(all_partitions, start=1):
         for row in part:
             row['GroupID'] = gid
             final_dataset.append(row)
     
-    return final_dataset, (0, 0) # Returning dummy levels for compatibility check
+    return final_dataset
 
 if __name__ == "__main__":
-    pass # Implementation moved to function logic mostly
+    pass # non eseguo nulla se non importo il modulo

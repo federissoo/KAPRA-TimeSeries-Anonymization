@@ -43,24 +43,23 @@ def calculate_envelope_and_vl(cluster):
         # (though VL will be 0)
         data = data.reshape(1, -1)
     
-    # n is the number of timestamps (columns)
+    # n è il numero di timestamp (colonne)
     n = data.shape[1]
     
     if n == 0:
         return np.array([]), np.array([]), 0.0
 
-    # Calculate Lower Bound and Upper Bound
-    # axis=0 means we reduce across the rows (series), finding min/max for each column (timestamp)
+    # calcolo Lower Bound e Upper Bound
+    # axis=0 significa che riduciamo le righe (serie), trovando min/max per ogni colonna (timestamp)
     lower_bound = np.min(data, axis=0)
     upper_bound = np.max(data, axis=0)
 
-    # Calculate Instant Value Loss (VL)
-    # Formula: sqrt( sum( (r_max - r_min)^2 ) / n )
+    # calcolo VL
     diff = upper_bound - lower_bound
     squared_diff = diff ** 2
     sum_squared_diff = np.sum(squared_diff)
     
-    # Avoid division by zero if n is 0 (handled above, but good for safety)
+    # evito la divisione per zero se n è 0 (gestito sopra, ma è buona pratica)
     if n > 0:
         vl = np.sqrt(sum_squared_diff / n)
     else:

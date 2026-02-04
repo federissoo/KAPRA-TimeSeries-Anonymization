@@ -61,7 +61,7 @@ def ts_to_sax(series, level, n_segments=4):
     
     # Discretization
     if level not in SAX_BREAKPOINTS:
-        # Fallback per livelli non standard (opzionale, per sicurezza)
+        # per livello 1
         if level < 3: return "a" * n_segments
         raise ValueError(f"Alphabet size {level} unsupported")
         

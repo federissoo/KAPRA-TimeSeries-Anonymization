@@ -29,8 +29,8 @@ class Node:
 
 def get_sax_pattern(series, level):
     """
-    Generate SAX pattern for a time series.
-    Level = Alphabet Size.
+    Genera il pattern SAX per una serie temporale.
+    Level = Dimensione dell'alfabeto.
     """
     if level <= 0:
         return "" # Root level
@@ -38,119 +38,123 @@ def get_sax_pattern(series, level):
 
 def naive_node_splitting(node, P, max_level, time_cols):
     """
-    Recursive Node Splitting Algorithm.
+    Algoritmo di divisione ricorsiva dei nodi:
+    node = nodo da dividere
+    P = parametro di privacy
+    max_level = livello massimo di SAX
+    time_cols = colonne temporali
     """
-    # If the caller marked this as good-leaf (e.g. child_merge), stop.
+    # se il chiamante ha contrassegnato questo come good-leaf (es. child_merge), fermati.
     if node.label == "good-leaf":
         return
 
-    # 2. Se N.size < P allora:
+    # se node.size < P allora:
     if node.size < P:
         node.label = "bad-leaf"
         return
 
-    # 4. Altrimenti se N.level == max-level allora:
+    # se node.level == max-level allora:
     if node.level == max_level:
         node.label = "good-leaf"
         return
 
-    # 6. Altrimenti se P <= N.size < 2*P allora:
+    # se P <= node.size < 2*P allora:
     if P <= node.size < 2 * P:
-        # 7. Massimizza N.level senza dividere il nodo
+        # Massimizza node.level (livello di dettaglio SAX) senza dividere il nodo
         # Loop to increase level as long as ALL records share the same pattern
         current_level = node.level
         current_pattern = node.pattern
         
+        # loop per aumentare il livello di dettaglio SAX
         while current_level < max_level:
             next_level = current_level + 1
             patterns = []
-            for row in node.data:
-                ts = [row[c] for c in time_cols]
-                patterns.append(get_sax_pattern(ts, next_level))
+            for row in node.data: # Per ogni record nel nodo
+                ts = [row[c] for c in time_cols] # Prendi la serie temporale [val1, val2, ..., valn]
+                patterns.append(get_sax_pattern(ts, next_level)) # ricalcola il pattern SAX con il livello aumentato
             
-            # Check if all patterns are identical
+            # Se tutti i pattern sono identici aumento di un livello e aggiorno il pattern e riciclo
             if len(set(patterns)) == 1:
                 current_level = next_level
                 current_pattern = patterns[0]
             else:
-                # Divergence found, stop at current_level
+                # altrimenti rimangono a quello precedente
                 break
         
-        # Update node state
+        # aggiorna il nodo
         node.level = current_level
         node.pattern = current_pattern
         node.label = "good-leaf"
         return
 
-    # 9. Altrimenti (N.size >= 2*P):
-    # 10. Esegui una scissione tentativa incrementando il livello
+    # Altrimenti (node.size >= 2*P):
+    # Eseguo una scissione tentativa incrementando il livello
     next_level = node.level + 1
     
-    # Check if we can split: group data by next level patterns
+    # Raggruppo i record per pattern SAX al livello successivo
     groups = {}
-    for row in node.data:
-        ts = [row[c] for c in time_cols]
-        pat = get_sax_pattern(ts, next_level)
-        if pat not in groups:
+    for row in node.data: # per ogni record
+        ts = [row[c] for c in time_cols] # prendi la serie temporale
+        pat = get_sax_pattern(ts, next_level) # ricalcola il pattern SAX con il livello aumentato
+        if pat not in groups: # se il gruppo con quel pattern non esiste lo creo 
             groups[pat] = []
-        groups[pat].append(row)
+        groups[pat].append(row) # aggiungi il record al gruppo
+        """ groups = {
+            pattern1: [row1, row2, ...],
+            pattern2: [row3, row4, ...],
+            ...
+        } """
     
     valid_children = [] # Size >= P
     small_children = [] # Size < P (TB-nodes)
     
-    for pat, rows in groups.items():
-        child = Node(rows, next_level, pat, len(rows))
-        if len(rows) >= P:
-            valid_children.append(child)
+    for pat, rows in groups.items(): # per ogni GRUPPO
+        child = Node(rows, next_level, pat, len(rows)) # crea un nodo figlio per ogni gruppo
+        if len(rows) >= P: # se la dimensione del gruppo >= P
+            valid_children.append(child) # lo aggiungo ai figli validi
         else:
-            small_children.append(child)
+            small_children.append(child) # altrimenti lo aggiungo ai figli piccoli
     
-    # 12. Se la somma delle dimensioni dei figli piccoli (TB-nodes) >= P allora:
     total_small_size = sum(c.size for c in small_children)
     
-    if total_small_size >= P:
-        # 13. Crea un nuovo nodo unificandoli (child_merge)
+    if total_small_size >= P: # se la somma delle dimensioni dei figli piccoli >= P
+        # Crea un nuovo nodo unificandoli (child_merge)
         merged_data = []
         for c in small_children:
             merged_data.extend(c.data)
         
-        # 14. Imposta livello di child_merge = N.level (Parent Level)
-        # This effectively resets the specific patterns they had at level+1.
-        # They share the parent's pattern.
+        # Imposta livello di child_merge = N.level (livello del padre)
         child_merge = Node(merged_data, node.level, node.pattern, len(merged_data), label="intermediate")
         
-        # TO AVOID LOOP: We must recognize this node shouldn't be split again at level+1.
+        # per evitare loop mettiamo child_merge come good-leaf
         child_merge.label = "good-leaf"
         valid_children.append(child_merge)
-        small_children = [] # Handled matches
+        small_children = [] 
     
-    # Any remaining small_children (if sum < P) must be added to children
-    # so they can be visited and labeled "bad-leaf" by the recursion base case.
+    # Aggiungiamo i figli piccoli (rimasti se < P) ai figli validi
     valid_children.extend(small_children)
     
-    if valid_children:
-        node.children = valid_children
+    if valid_children: # se ci sono figli validi
+        node.children = valid_children # li aggiungiamo ai figli del nodo
         # 15. Invocazione ricorsiva su tutti i figli validi generati
         for child in node.children:
             naive_node_splitting(child, P, max_level, time_cols)
-    else:
-        # 16. Altrimenti (nessun figlio valido generato)
-        # 17. N.label = good-leaf (Retract split, make parent a leaf)
-        node.children = []
+    else: # Altrimenti (nessun figlio valido generato)
+        node.children = [] # ritrattiamo la divisione rendendo il padre una foglia
         node.label = "good-leaf"
 
-def collect_leaves(node):
-    if not node.children:
-        return [node]
-    leaves = []
-    for child in node.children:
-        leaves.extend(collect_leaves(child))
-    return leaves
+def collect_leaves(node): # raccoglie tutte le foglie dell'albero
+    if not node.children: # se il nodo non ha figli è una foglia
+        return [node] # restituisce il nodo
+    leaves = [] # lista delle foglie
+    for child in node.children: # per ogni figlio
+        leaves.extend(collect_leaves(child)) # aggiunge le foglie del figlio alla lista
+    return leaves # restituisce la lista delle foglie
 
 def calculate_distance(ts_data, leaf_pattern, level):
     """
-    Calculate distance between a raw time series and a leaf's pattern/reconstruction.
-    Uses Patterns Loss metric.
+    Calcola la distanza tra una serie temporale grezza e il pattern/ricostruzione di una foglia.
+    Usa la metrica Pattern Loss.
     """
     # Assuming leaf.pattern represents the centroid reconstruction
     try:
@@ -163,31 +167,31 @@ def main():
     input_path = os.path.join(base_dir, "../docs/data/dataset_raw.csv")
     output_path = os.path.join(base_dir, "../docs/data/naive_anonymized.csv")
     
-    # Parameters
+    # parametri
     K = 8
     P = 2
-    MAX_LEVEL = 5 # SAX Alphabet Size Limit
+    MAX_LEVEL = 5 # limito la dimensione del SAX alphabet
     
     print(f"--- Naive (k,P)-Anonymization Algorithm (K={K}, P={P}) ---")
     start_time = time.time()
     
-    # 1. Load Data
+    # carico i dati
     try:
         df = pd.read_csv(input_path)
     except FileNotFoundError:
         print(f"Error: {input_path} not found.")
         sys.exit(1)
         
-    # Drop EI
+    # droppo EI
     eis = ['ID', 'Name', 'Surname']
     df_clean = df.drop(columns=[c for c in eis if c in df.columns])
     
     time_cols = [c for c in df.columns if c.startswith('H')]
     
-    # 2. Phase 1: Mondrian Partitioning on Time Series
+    # divido dataset 
     print("Phase 1: Partitioning dataset into K-groups (Time Series Clustering)...")
-    dataset_dict = df_clean.to_dict('records')
-    anon_dataset, ph1_levels = makeDatasetKAnon(dataset_dict, K, time_cols=time_cols)
+    dataset_dict = df_clean.to_dict('records') # trasformo il dataset in una lista di dizionari
+    anon_dataset = makeDatasetKAnon(dataset_dict, K, time_cols=time_cols) # divido il dataset in K gruppi
     
     if not anon_dataset:
         print("Failed Phase 1.")
@@ -195,39 +199,39 @@ def main():
         
     print(f"Phase 1 Complete.")
     
-    df_ph1 = pd.DataFrame(anon_dataset)
-    grouped = df_ph1.groupby('GroupID')
+    df_ph1 = pd.DataFrame(anon_dataset) 
+    grouped = df_ph1.groupby('GroupID') # raggruppo i record per GroupID
     
     final_leaves = []
     
-    # 3. Phase 2: Node Splitting per K-group
+    # divido i gruppi in nodi
     print("Phase 2: Node Splitting per K-group...")
     
-    for group_id, group in grouped:
-        group_data = group.to_dict('records')
-        # Start at Level 1 (Coarsest granularity "aaaa")
-        initial_level = 1
+    for group_id, group in grouped: # per ogni gruppo
+        group_data = group.to_dict('records') # trasformo il gruppo in una lista di dizionari
+        initial_level = 1 # inizio a livello 1
         
-        # Calculate initial pattern from the first record (representative)
-        # All records at level 1 should produce the same "aaaa" pattern given our logic
-        first_ts = [group_data[0][c] for c in time_cols]
-        initial_pattern = get_sax_pattern(first_ts, initial_level)
+        # calcolo il pattern iniziale dal primo record (rappresentante)
+        # tutti i record al livello 1 hanno stesso pattern "aaaa"
+        first_ts = [group_data[0][c] for c in time_cols] # prendo la prima serie temporale del gruppo
+        initial_pattern = get_sax_pattern(first_ts, initial_level) # calcolo il pattern iniziale 
         
-        root = Node(group_data, level=initial_level, pattern=initial_pattern, size=len(group_data))
+        root = Node(group_data, level=initial_level, pattern=initial_pattern, size=len(group_data)) # creo il nodo radice
         
-        naive_node_splitting(root, P, MAX_LEVEL, time_cols)
+        naive_node_splitting(root, P, MAX_LEVEL, time_cols) # divido i nodi
         
-        leaves = collect_leaves(root)
+        leaves = collect_leaves(root) # raccolgo le foglie
         for l in leaves:
             l.group_id = group_id
         
+        # divido le foglie in good e bad
         good_leaves = [l for l in leaves if l.label == "good-leaf"]
         bad_leaves = [l for l in leaves if l.label == "bad-leaf"]
         
-        # Post-processing: Merge bad leaves
+        # se ci sono foglie bad
         if bad_leaves:
             if not good_leaves:
-                 # If all bad, force merge all into one good leaf (fallback)
+                 # se tutte le foglie sono bad, le unisco in una sola good leaf
                  merged_all = Node([], 2, "*", 0, "good-leaf")
                  for l in bad_leaves:
                      merged_all.data.extend(l.data)
@@ -236,20 +240,18 @@ def main():
                  good_leaves = [merged_all]
             else:
                 for bl in bad_leaves:
-                    # Find nearest good leaf
+                    # trovo la good leaf più vicina alla bad leaf
                     best_target = None
                     min_dist = float('inf')
                     
-                    # Compute centroid of bad leaf for efficiency?
-                    # Or avg distance of all rows?
-                    # Let's take the first row as representative or compute mean series.
+                    # calcolo la serie temporale media della bad leaf
                     bl_matrix = np.array([[row[c] for c in time_cols] for row in bl.data])
                     bl_mean_ts = np.mean(bl_matrix, axis=0)
                     
                     for gl in good_leaves:
-                        # Distance between BadLeaf Mean TS and GoodLeaf Pattern
-                        # The GoodLeaf pattern reconstruction depends on its Level.
-                        d = calculate_pattern_loss(bl_mean_ts, gl.pattern, gl.level)
+                        # Distanza tra la serie media della BadLeaf e il pattern della GoodLeaf
+                        # La ricostruzione del pattern della GoodLeaf dipende dal suo livello.
+                        d = calculate_distance(bl_mean_ts, gl.pattern, gl.level)
                         if d < min_dist:
                             min_dist = d
                             best_target = gl
@@ -257,12 +259,12 @@ def main():
                     if best_target:
                         best_target.data.extend(bl.data)
                         best_target.size += bl.size
-                        # Do NOT update pattern/level. They just get absorbed.
+                        # NON aggiornare pattern/livello. Vengono semplicemente assorbiti.
         
         final_leaves.extend(good_leaves)
         
-    # 4. Construct Final Dataset
-    print("Constructing final anonymized dataset...")
+    # 4. Costruzione del Dataset Finale Anonimizzato
+    print("Costruzione del dataset finale anonimizzato...")
     final_rows = []
     
     total_pl = 0
@@ -286,15 +288,15 @@ def main():
             new_row['GroupID'] = leaf.group_id
             final_rows.append(new_row)
             
-            # Pattern Loss Metric
+            # Metrica Pattern Loss
             ts = [row[c] for c in time_cols]
             try:
-                # If level < 3 (e.g. root wasn't split), we can't calc PL via SAX?
-                # If leaf.level < 3 (e.g. 2), we treat it as no pattern?
+                # Se livello < 3 (es. radice non divisa), non possiamo calcolare PL via SAX
+                # Se leaf.level < 3 (es. 2), lo trattiamo come nessun pattern
                 if leaf_level >= 3:
                      pl = calculate_pattern_loss(ts, leaf_pattern, leaf_level)
                 else:
-                     pl = 0 # Or max?
+                     pl = 0 # O max?
                 total_pl += pl
             except Exception as e:
                 pass
@@ -303,8 +305,8 @@ def main():
     df_final = pd.DataFrame(final_rows)
     df_final.sort_values(by=['GroupID'], inplace=True)
     
-    # Export
-    cols_to_drop = ['Value_Loss', 'Level'] # Keep Pattern? Maybe.
+    # Esportazione
+    cols_to_drop = ['Value_Loss', 'Level'] # Mantenere Pattern? Forse.
     df_export = df_final.drop(columns=[c for c in cols_to_drop if c in df_final.columns])
     if 'GroupID' in df_export.columns:
         cols = ['GroupID'] + [c for c in df_export.columns if c != 'GroupID']
@@ -313,11 +315,11 @@ def main():
     df_export.to_csv(output_path, index=False)
     print(f"Done. Saved to {output_path}")
 
-    # --- Metrics ---
-    print("\n--- Evaluation Metrics ---")
+    # --- Metriche ---
+    print("\n--- Metriche di Valutazione ---")
     
     end_time = time.time()
-    print(f"Total Execution Time: {end_time - start_time:.4f} seconds")
+    print(f"Tempo Totale di Esecuzione: {end_time - start_time:.4f} secondi")
     
     avg_vl = df_final['Value_Loss'].mean()
     print(f"Average Instant Value Loss (VL): {avg_vl:.4f}")
@@ -325,19 +327,19 @@ def main():
     avg_pl = total_pl / total_records if total_records > 0 else 0
     print(f"Average Pattern Loss (PL): {avg_pl:.4f}")
 
-    # 3. Query Metrics (Simulation)
-    # Relative Error in Range Queries
-    # We simulate N random range queries on H1..H8
+    # 3. Query Metrics (Simulazione)
+    # Errore Relativo nelle Range Queries
+    # Simuliamo N range queries casuali su H1..H8
     
-    print("Simulating Range Queries...")
-    # Need access to original df with time cols (df_clean has them)
-    # And df_final
+    print("Simulazione Range Queries...")
+    # Serve accesso al df originale con colonne temporali (df_clean le ha)
+    # E df_final
     
-    # Simple Benchmark: 
-    # Select a random column C, random range [v1, v2]
-    # Count(Original) where C in [v1, v2]
-    # Count(Anonymized) where Interval overlaps [v1, v2]
-    # Estimate overlap assuming uniform distribution in [min, max]
+    # Benchmark Semplice: 
+    # Seleziona una colonna C, range casuale [v1, v2]
+    # Conta(Originale) dove C in [v1, v2]
+    # Conta(Anonimizzato) dove Intervallo si sovrappone a [v1, v2]
+    # Stima sovrapposizione assumendo distribuzione uniforme in [min, max]
     
     import random
     random.seed(42)
@@ -346,49 +348,49 @@ def main():
     
     for _ in range(n_queries):
         col = random.choice(time_cols)
-        # Range derivation
+        # Derivazione del range
         min_val = df_clean[col].min()
         max_val = df_clean[col].max()
         
-        # Random range of size 10% to 50% of domain
+        # Range casuale di dimensione 10% a 50% del dominio
         range_size = (max_val - min_val) * random.uniform(0.1, 0.5)
         start = random.uniform(min_val, max_val - range_size)
         end = start + range_size
         
-        # True Count
+        # Conteggio Reale
         true_count = df_clean[(df_clean[col] >= start) & (df_clean[col] <= end)].shape[0]
         
         if true_count == 0:
-            continue # Skip to avoid div by zero issues in simple metric
+            continue # Salta per evitare div by zero
             
-        # Estimated Count
-        # df_final[col] is "[min-max]"
-        # Parse intervals
+        # Conteggio Stimato
+        # df_final[col] è "[min-max]"
+        # Parsa intervalli
         est_count = 0
         for val_str in df_final[col]:
-            # val_str format "[min-max]"
+            # formato val_str "[min-max]"
             try:
                 content = val_str.strip("[]")
-                # Handle possible float values
+                # Gestione possibili valori float
                 v_min, v_max = map(float, content.split('-'))
                 
-                # Check overlap
-                # Interval [v_min, v_max]
+                # Controllo sovrapposizione
+                # Intervallo [v_min, v_max]
                 # Query [start, end]
                 
                 overlap_start = max(v_min, start)
                 overlap_end = min(v_max, end)
                 
                 if overlap_start < overlap_end:
-                    # There is overlap
+                    # C'è sovrapposizione
                     overlap_len = overlap_end - overlap_start
                     interval_len = v_max - v_min
                     
                     if interval_len == 0:
-                        # Point value
+                        # Valore puntuale
                         est_count += 1
                     else:
-                        # Fraction
+                        # Frazione
                         est_count += (overlap_len / interval_len)
             except:
                 pass
@@ -397,7 +399,7 @@ def main():
         total_rel_error += rel_error
         
     avg_rel_error = total_rel_error / n_queries
-    print(f"Average Relative Error in Range Queries (avg {n_queries} runs): {avg_rel_error:.4f}")
+    print(f"Errore Relativo Medio nelle Range Queries (su {n_queries} run): {avg_rel_error:.4f}")
 
 
 if __name__ == "__main__":
