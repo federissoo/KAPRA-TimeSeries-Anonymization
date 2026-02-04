@@ -23,11 +23,8 @@ When an adversary combines both, they perform a **Unified Attack**, which can id
 
 ## Documentation Structure
 - [Why k-Anonymity Fails](k-anon-failure.md)
-- [The KAPRA Solution](kapra-approach.md)
+- [Naive Algorithm](naive-algo.md)
+- [KAPRA Algorithm](kapra-algo.md)
 
 ## Technical Implementation
 The current implementation uses Python and Poetry, processing Quasi-Identifiers (QI) that focus on temporal sequences (H1 to H8).
-
-## Real Results
-- [Naive Algorithm](naive-algo-results.md)
-- [KAPRA Algorithm](kapra-algo-results.md)

@@ -31,23 +31,28 @@ Una volta creati i gruppi, l'algoritmo valuta la qualità dell'anonimizzazione c
 
 ### 2. Fase 2: Raffinamento del Pattern (Naive Node Splitting)
 
-Una volta ottenuti i k-group basati sui valori, l'algoritmo esegue una procedura ricorsiva Top-Down per suddividere ulteriormente ogni gruppo in P-subgroups, cercando di massimizzare il dettaglio della forma della curva (Pattern SAX).
+Una volta ottenuti i k-group basati sui valori, l'algoritmo esegue una procedura ricorsiva per suddividere ulteriormente ogni gruppo in P-subgroups, cercando di massimizzare il dettaglio della forma della curva (Pattern SAX).
 
 *   **Pre-processing (PAA):**
     Le serie temporali (es. 8 punti) vengono preliminarmente ridotte a 4 segmenti tramite Piecewise Aggregate Approximation (PAA). Questo passaggio riduce la dimensionalità e mitiga il rumore prima della discretizzazione simbolica.
+    ![alt text](imgs/sax_0.png)
 
 *   **Discretizzazione Gerarchica (SAX Level):**
-    L'algoritmo tenta di descrivere le curve con una precisione crescente, aumentando progressivamente il parametro *level* (che corrisponde alla cardinalità dell'alfabeto SAX, ovvero in quante fasce viene diviso l'asse delle Y).
+    L'algoritmo tenta di descrivere le curve con una precisione crescente, aumentando progressivamente il parametro *level* (che corrisponde alla cardinalità dell'alfabeto SAX.
+
     *   **Livello Base (1):** Si parte da una descrizione generica (bassa risoluzione).
+
     *   **Livelli Successivi:** Si tenta di aumentare il livello (split) per distinguere meglio le curve all'interno del gruppo.
 
 *   **Il Ruolo del MAX_LEVEL:**
     È stato imposto un tetto massimo di raffinamento ``MAX_LEVEL = 5``.
-    *   *Significato:* Al massimo dettaglio, l'algoritmo utilizzerà un alfabeto di 5 simboli (es. 'a', 'b', 'c', 'd', 'e') per descrivere l'altezza di ogni segmento.
+    *   *Significato:* Al massimo dettaglio, l'algoritmo utilizzerà un alfabeto di 5 simboli (es. 'a', 'b', 'c', 'd', 'e') per descrivere l'altezza di ogni segmento, questo perché un livello troppo alto aumenterebbe la precisione del pattern (riducendo il Pattern Loss), ma renderebbe estremamente difficile trovare $P$ record identici, costringendo l'algoritmo a sopprimere troppi dati. 
+    Il valore 5 rappresenta un compromesso tra la fedeltà della forma e la garanzia di anonimato.
+
     *   *Logica di Arresto:* La ricorsione si ferma quando:
         1.  Si raggiunge il MAX_LEVEL (massima precisione consentita).
         2.  Non è possibile aumentare il livello senza violare il vincolo di privacy $P$ (il gruppo diventerebbe troppo piccolo, $< P$, o i record non avrebbero più lo stesso pattern).
-    *   *Motivazione:* Un `max_level` troppo alto aumenterebbe la precisione del pattern (riducendo il Pattern Loss), ma renderebbe estremamente difficile trovare $P$ record identici, costringendo l'algoritmo a sopprimere troppi dati. Il valore 5 rappresenta un compromesso tra la fedeltà della forma e la garanzia di anonimato.
+
 
 ![alt text](imgs/sax_1.png)
 
@@ -70,37 +75,11 @@ Durante la suddivisione ricorsiva nella Fase 2, è possibile che vengano generat
 4.  **Spareggio:** In caso di parità (distanze uguali verso più nodi), viene scelto il nodo di destinazione con la dimensione minore.
 5.  **Sovrascrittura:** Una volta uniti, i record della *bad leaf* perdono il loro pattern originale e assumono la rappresentazione del pattern (PR) della *good leaf* ospitante.
 
-#### Calcolo della Similitudine e Decisione di Merging
-Una volta ottenuti i Feature Vectors (FV), l'algoritmo deve decidere a quale Good Leaf unire la Bad Leaf. L'obiettivo è minimizzare la Pattern Loss, definita come $1 - \text{CosineSimilarity}$.
-
-**Esempio di Calcolo (Scenario Teorico)**
-Supponiamo lo scenario seguente basato sui centroidi SAX:
-*   **Bad Leaf (da salvare):** `abb` $\rightarrow FV_{abb} = [+0.97, 0, +0.97]$
-*   **Good Leaf 1 (Candidato A):** `abc` $\rightarrow FV_{abc} = [+0.97, +0.97, +1.94]$
-*   **Good Leaf 2 (Candidato B):** `cba` $\rightarrow FV_{cba} = [-0.97, -0.97, -1.94]$
-
-I calcoli eseguiti per determinare il vincitore sono:
-*   **Confronto A: abb vs abc (Simili?)**
-    *   Prodotto Scalare: $(0.97 \times 0.97) + (0 \times 0.97) + (0.97 \times 1.94) = \mathbf{2.82}$
-    *   Magnitudini: $\|FV_{abb}\| \approx 1.37$, $\|FV_{abc}\| \approx 2.37$. Prodotto $\approx 3.25$.
-    *   Risultato: $\text{Similarity} = 2.82 / 3.25 \approx \mathbf{0.868}$.
-    *   Pattern Loss: $1 - 0.868 = \mathbf{0.132}$ (Molto bassa).
-
-*   **Confronto B: abb vs cba (Opposti?)**
-    *   Prodotto Scalare: $(0.97 \times -0.97) + ... = \mathbf{-2.82}$.
-    *   Risultato: $\text{Similarity} \approx \mathbf{-0.868}$.
-    *   Pattern Loss: $1 - (-0.868) = \mathbf{1.868}$ (Molto alta).
-
-**Verdetto:** La Bad Leaf viene unita al gruppo `abc`, preservando il trend di salita.
-
-> [!NOTE]
-> **Nota di Implementazione: Ottimizzazione sui Dati Reali**
->
-> Mentre il paper suggerisce di confrontare la rappresentazione del pattern della Bad Leaf ($PR_{bad}$) con quella della Good Leaf ($PR_{good}$), l'implementazione attuale adotta una strategia più precisa:
-> *   **Metodo Paper (Teorico):** Confronta $FV(\text{SAX}_{\text{bad}})$ vs $FV(\text{SAX}_{\text{good}})$.
-> *   **Metodo Implementato:** Confronta $FV(\text{DatiReali}_{\text{bad}})$ vs $FV(\text{SAX}_{\text{good}})$.
->
-> **Motivazione:** Una Bad Leaf contiene spesso pochissimi record (es. 1 solo). Convertire questo singolo record in una stringa SAX introduce immediatamente un errore di approssimazione (discretizzazione). Utilizzando invece la media dei dati grezzi (Ground Truth) della Bad Leaf, eliminiamo l'errore iniziale di quantizzazione e troviamo il gruppo di destinazione che meglio accoglie la forma reale della curva, minimizzando la distorsione semantica nel dataset finale.
+Calcolo della Similitudine e Decisione di MergingUna volta individuate le Bad Leafs, l'algoritmo deve decidere a quale Good Leaf unirle. Per fare ciò, i pattern simbolici (stringhe SAX) devono essere convertiti in Feature Vectors (FV) numerici confrontabili.Il processo di conversione segue due passaggi fondamentali basati sulle definizioni del paper:1. Ricostruzione dei Valori (SAX Centroids)
+Ogni simbolo SAX viene convertito nel valore numerico corrispondente al centroide della sua regione nella curva Gaussiana Standard (Normale) .
+Ipotizzando un livello SAX = 3 (alfabeto a, b, c), i valori di ricostruzione sono approssimativamente:a (Basso) $\to -0.97$b (Medio) $\to 0.00$c (Alto) $\to +0.97$2. Costruzione del Feature Vector (Differenze a Coppie)
+Il vettore delle caratteristiche non usa i valori assoluti, ma le relazioni tra i punti per catturare la forma (pattern). Come descritto negli esperimenti del paper, il vettore è composto da tutte le possibili differenze tra coppie di attributi ($v_j - v_i$).
+Per una serie di 3 punti ($v_1, v_2, v_3$), il FV è $[v_2-v_1, v_3-v_2, v_3-v_1]$.+1Esempio di Calcolo (Scenario Teorico)Analizziamo il caso di una Bad Leaf con pattern abb:Ricostruzione: abb $\to v = [-0.97, 0, 0]$Feature Vector ($FV_{abb}$):$v_2 - v_1 = 0 - (-0.97) = +0.97$ (Salita iniziale)$v_3 - v_2 = 0 - 0 = 0$ (Stabilità finale)$v_3 - v_1 = 0 - (-0.97) = +0.97$ (Salita complessiva)Risultato: $FV_{abb} = [+0.97, 0, +0.97]$Applicando lo stesso calcolo alle potenziali destinazioni (Good Leaves):Good Leaf 1 (abc): Ricostruito $[-0.97, 0, +0.97] \to FV_{abc} = [+0.97, +0.97, +1.94]$Good Leaf 2 (cba): Ricostruito $[+0.97, 0, -0.97] \to FV_{cba} = [-0.97, -0.97, -1.94]$L'obiettivo è minimizzare la Pattern Loss, definita come $1 - \text{CosineSimilarity}$ tra questi vettori.Calcoli per determinare il vincitore:Confronto A: abb vs abc (Simili?)Prodotto Scalare: $(0.97 \times 0.97) + (0 \times 0.97) + (0.97 \times 1.94) = \mathbf{2.82}$Magnitudini: $\|FV_{abb}\| \approx 1.37$, $\|FV_{abc}\| \approx 2.37$. Prodotto $\approx 3.25$.Risultato: $\text{Similarity} = 2.82 / 3.25 \approx \mathbf{0.868}$.Pattern Loss: $1 - 0.868 = \mathbf{0.132}$ (Molto bassa).Confronto B: abb vs cba (Opposti?)Prodotto Scalare: $(0.97 \times -0.97) + ... = \mathbf{-2.82}$.Risultato: $\text{Similarity} \approx \mathbf{-0.868}$.Pattern Loss: $1 - (-0.868) = \mathbf{1.868}$ (Molto alta).Verdetto: La Bad Leaf viene unita al gruppo abc, preservando il trend di salita.[!NOTE]Nota di Implementazione: Ottimizzazione sui Dati RealiMentre il paper suggerisce di confrontare la rappresentazione del pattern della Bad Leaf ($PR_{bad}$) con quella della Good Leaf ($PR_{good}$), l'implementazione attuale adotta una strategia più precisa:Metodo Paper (Teorico): Confronta $FV(\text{SAX}_{\text{bad}})$ vs $FV(\text{SAX}_{\text{good}})$.Metodo Implementato: Confronta $FV(\text{DatiReali}_{\text{bad}})$ vs $FV(\text{SAX}_{\text{good}})$.Motivazione: Una Bad Leaf contiene spesso pochissimi record (es. 1 solo). Convertire questo singolo record in una stringa SAX introduce immediatamente un errore di approssimazione (discretizzazione). Utilizzando invece la media dei dati grezzi (Ground Truth) della Bad Leaf, eliminiamo l'errore iniziale di quantizzazione e troviamo il gruppo di destinazione che meglio accoglie la forma reale della curva, minimizzando la distorsione semantica nel dataset finale.
 
 ## Metriche di Performance
 
@@ -137,8 +116,3 @@ Il file CSV prodotto (`naive_anonymized.csv`) presenta la seguente struttura:
 *   **H1...H8**: Valori delle serie temporali generalizzati come intervalli stringa `[min-max]`.
 *   **Performance_SD**: Attributo sensibile (Quasi-Identifier categoriale o Sensibile, lasciato invariato).
 *   **Pattern**: Rappresentazione SAX finale del gruppo (es. "aaaa", "aabc", "edca"). Rappresenta la forma media del gruppo su 4 segmenti temporali.
-
-## Dataset Files
-
-*   [Raw Dataset](docs/data/dataset_raw.csv)
-*   [Anonymized Dataset](docs/data/naive_anonymized.csv)
