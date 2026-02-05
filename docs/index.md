@@ -25,6 +25,7 @@ When an adversary combines both, they perform a **Unified Attack**, which can id
 - [Why k-Anonymity Fails](k-anon-failure.md)
 - [Naive Algorithm](naive-algo.md)
 - [KAPRA Algorithm](kapra-algo.md)
+- [Optimization Report](optimization_report.md)
 
 ## Technical Implementation
 The current implementation uses Python and Poetry, processing Quasi-Identifiers (QI) that focus on temporal sequences (H1 to H8).

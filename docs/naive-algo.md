@@ -74,7 +74,7 @@ Il parametro `MAX_LEVEL` è un limite teorico, ma il vero collo di bottiglia è 
 
 | Scenario | Configurazione | Risultato Atteso |
 | :--- | :--- | :--- |
-| **Massima Utility** (Privacy Base) | **$K=5, P=2, \text{Level}=10$** | **VL Minimo (~5.46)**, PL Ottimo. Ideale per analisi dati dettagliate. |
+| **Massima Utility** (Privacy Base) | **$K=5, P=2, \text{Level}=10$** | **VL Minimo (~3.07)**, PL Ottimo. Ideale per analisi dati dettagliate. |
 | **Privacy Moderata** | **$K=5, P=8, \text{Level}=3$** | Pattern più generici, ma garanzia di anonimato più forte. Inutile alzare il Level oltre 3. |
 
 ---
@@ -86,8 +86,8 @@ I seguenti risultati fanno riferimento al **Best Trade-off Scenario** ($K=5, P=2
 | Metrica | Valore | Descrizione e Note Tecniche |
 | --- | --- | --- |
 | **Tempo di Esecuzione** | **Rapido** | L'algoritmo scala efficientemente grazie alla struttura ad albero. |
-| **Avg Instant Value Loss (VL)** | **~5.46** | Errore medio sui valori molto contenuto grazie alla libertà di partizionamento data da $K=5$. |
-| **Avg Pattern Loss (PL)** | **~0.076** | Bassissima distorsione della forma. L'uso di un `MAX_LEVEL=10` permette di distinguere picchi e micro-trend con grande precisione. |
+| **Avg Instant Value Loss (VL)** | **~3.07** | Errore medio sui valori molto contenuto grazie alla libertà di partizionamento data da $K=5$. |
+| **Avg Pattern Loss (PL)** | **~0.060** | Bassissima distorsione della forma. L'uso di un `MAX_LEVEL=10` permette di distinguere picchi e micro-trend con grande precisione. |
 | **Range Query Error** | **< 10%** | La precisione nelle query di intervallo rimane alta grazie alla bassa Value Loss. |
 
 ### Dettaglio delle Formule Utilizzate

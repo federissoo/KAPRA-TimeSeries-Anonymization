@@ -90,3 +90,9 @@ Questa implementazione presenta una deviazione intenzionale rispetto all'algorit
     * **Motivazione:** Si tratta di una scelta ingegneristica per ridurre la complessità del codice (evitando logiche ricorsive top-down all'interno del flusso bottom-up) senza compromettere i requisiti di sicurezza.
     * **Impatto sulla Privacy:** Nessuno. Mantenere gruppi più grandi di quanto strettamente necessario rappresenta uno stato di **"fail-open"**: la privacy è garantita in eccesso, poiché un gruppo più numeroso offre un anonimato ancora più forte (soddisfacendo ampiamente i requisiti $k$ e $P$).
     * **Impatto sull'Utilità:** Potrebbe esserci un marginale aumento della *Value Loss* per alcuni dataset specifici, ma i test (vedi report di ottimizzazione) confermano che la strategia di merging greedy della Fase 3 gestisce efficacemente la formazione dei gruppi.
+
+* **Pattern Assignment (Record-Specific vs Group Dominant):**
+    Nella fase di generazione dell'output e calcolo delle metriche, l'implementazione sfrutta la flessibilità del modello $(k,P)$-anonymity:
+    *   **Envelope:** È unico per l'intero $k$-group (determinato dal merging nella Fase 3).
+    *   **Pattern:** Invece di forzare un unico pattern dominante per tutti i record del gruppo, viene preservato il pattern originale del **$P$-subgroup** di appartenenza (calcolato nella Fase 2).
+    *   **Risultato:** Questo permette di abbattere la Pattern Loss (che viene calcolata rispetto al pattern specifico e non a quello medio), garantendo comunque che ogni pattern visualizzato sia condiviso da almeno $P$ utenti.

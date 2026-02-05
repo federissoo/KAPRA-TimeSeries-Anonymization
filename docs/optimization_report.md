@@ -29,7 +29,7 @@ La miglior combinazione per avere l'errore minimo:
 *   **K**: 5
 *   **P**: 2
 *   **MAX_LEVEL**: 10 (o 8)
-*   *Risultato*: VL ~5.46, PL ~0.076
+*   *Risultato*: VL ~3.07, PL ~0.06
 
 ### Scenario B: Privacy Moderata (P=8)
 Se è richiesto P=8, aumentare MAX_LEVEL è inutile.
@@ -42,9 +42,9 @@ Se è richiesto P=8, aumentare MAX_LEVEL è inutile.
 
 | P | MAX_LEVEL | VL (Errore Valori) | PL (Errore Pattern) | Note |
 |---|---|---|---|---|
-| **2** | 3 | 6.31 | 0.083 | Buono |
-| **2** | **10** | **5.46** | **0.076** | **Ottimo** |
-| **2** | 20 | 5.46 | 0.076 | Saturo (nessun guadagno extra) |
+| **2** | 3 | 4.96 | 0.068 | Buono |
+| **2** | **10** | **3.07** | **0.060** | **Ottimo** |
+| **2** | 20 | 3.07 | 0.059 | Saturo (nessun guadagno extra) |
 | **8** | 3 | 8.19 | 0.00* | Pattern generici (livello 2) |
 | **8** | 20 | 8.19 | 0.00* | Limitato da P, non raggiunge livelli alti |
 

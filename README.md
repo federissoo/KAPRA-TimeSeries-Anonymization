@@ -27,8 +27,14 @@ This project implements the **KAPRA** algorithm to protect time-series data agai
 
 To run the anonymization process on the default dataset:
 
-```bash
-poetry run python src/k-anon.py
-```
+# Run KAPRA Anonymization (Default)
+poetry run python src/kapra_anonymization.py
+
+# Run Naive Anonymization
+poetry run python src/naive_anonymization.py
+
+# Generate Optimization Results & Graphs
+poetry run python src/generate_plots.py
+
 
 Check the `data/` folder for input/output files and `src/` for the implementation details.
