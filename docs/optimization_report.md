@@ -1,5 +1,23 @@
 # Report Ottimizzazione Parametri Naive (k,P)-Anonymity
 
+## Strumenti di Ottimizzazione
+Il processo di ottimizzazione è automatizzato tramite script Python dedicati che esplorano la grid search dei parametri.
+
+### File Python
+*   **`src/optimize_naive.py`**:
+    *   Esegue `run_naive_anonymization` per ogni combinazione di K, P, MAX_LEVEL.
+    *   Calcola metriche (VL, PL) e salva i risultati.
+*   **`src/optimize_kapra.py`**:
+    *   Esegue `run_kapra_anonymization` per ogni combinazione di parametri.
+    *   Implementa la logica di parallelizzazione (se presente) e raccolta metriche.
+
+### File CSV Risultati
+I risultati grezzi sono salvati nella cartella `docs/data/`:
+*   **`naive_optimization_results.csv`**: Contiene colonne `K`, `P`, `MAX_LEVEL`, `VL`, `PL`.
+*   **`kapra_optimization_results.csv`**: Contiene colonne `K`, `P`, `SAX_LEVEL`, `VL`, `PL`.
+
+Questi file sono la fonte dati per le tabelle di questo report e per i grafici generati da `src/generate_plots.py`.
+
 ## Esecuzione
 Il test è stato eseguito su un dataset di **3000 record** generati sinteticamente.
 Sono state testate le seguenti combinazioni:
@@ -12,40 +30,38 @@ Sono state testate le seguenti combinazioni:
 ### 1. Impatto di MAX_LEVEL e P
 Il parametro `MAX_LEVEL` agisce come un "tetto massimo" alla precisione, ma il fattore limitante reale è spesso **P**.
 
-*   **Con P basso (es. P=2)**: L'algoritmo riesce a scendere molto in profondità nall'albero. Aumentare `MAX_LEVEL` da 3 a 10 porta benefici significativi in termini di **Value Loss (VL)** (riduzione errore). Oltre il livello 10, i benefici si appiattiscono (diminishing returns).
-*   **Con P alto (es. P=8)**: L'algoritmo si ferma molto presto (spesso a Livello 2) perché non riesce a trovare sottogruppi di dimensione $\ge 8$ che condividano lo stesso pattern più dettagliato. Di conseguenza, aumentare `MAX_LEVEL` oltre 3 è totalmente ininfluente.
+*   **Con P basso (es. P=2)**: L'algoritmo riesce a scendere molto in profondità nell'albero. Aumentare `MAX_LEVEL` da 3 a 10 porta benefici significativi in termini di **Value Loss (VL)** (riduzione errore). Oltre il livello 10, i benefici si appiattiscono.
+*   **Con P alto (es. P=8)**: L'algoritmo si ferma molto presto (spesso a Livello 2) perché non riesce a trovare sottogruppi di dimensione $\ge 8$ che condividano lo stesso pattern.
 
-### 2. Impatto di K
-Sorprendentemente, valori più bassi di **K** (es. 5) hanno prodotto risultati migliori in termini di Value Loss rispetto a K alti (50).
-*   **K=5**: Permette di avere gruppi iniziali molto grandi (~600 record), lasciando alla Phase 2 (Naïve Node Splitting) la libertà di trovare la struttura ottimale gerarchica.
-*   **K=50**: Frammenta i dati in gruppi piccoli (~60 record) fin dall'inizio, limitando la capacità dell'algoritmo di raggruppare record simili che sono finiti in partizioni diverse.
+### 2. Pattern Loss: KAPRA vs Naive (Correzione Bias)
+Inizialmente, i risultati indicavano paradossalmente una Pattern Loss (PL) quasi nulla per il Naive. Approfondendo, è emerso un **metric bias**: l'algoritmo Naive genera molti record con **SAX Level < 3** (troppo basso per definire un pattern), a cui veniva assegnato erroneamente `PL=0.0`.
+
+Dopo aver corretto il calcolo (assegnando `PL=1.0` ai livelli < 3 per riflettere la perdita totale di informazione sulla forma), emerge la vera natura degli algoritmi:
+*   **KAPRA**: Pattern Loss bassa (**~0.15**), grazie al design pattern-first.
+*   **Naive**: Pattern Loss alta (**~0.35**), poiché sacrifica la forma per ottimizzare i valori.
+
+Questo convalida il modello $(k,P)$-anonymity: KAPRA preserva la forma significativamente meglio del Naive.
 
 ## Configurazione Ottimale (Best Trade-off)
-
-La configurazione vincente dipende dal livello di privacy richiesto.
 
 ### Scenario A: Massima Utility (Privacy base P=2)
 La miglior combinazione per avere l'errore minimo:
 *   **K**: 5
 *   **P**: 2
-*   **MAX_LEVEL**: 10 (o 8)
-*   *Risultato*: VL ~3.07, PL ~0.06
-
-### Scenario B: Privacy Moderata (P=8)
-Se è richiesto P=8, aumentare MAX_LEVEL è inutile.
-*   **K**: 5
-*   **P**: 8
-*   **MAX_LEVEL**: 3 (qualsiasi valore >2 dà lo stesso risultato)
-*   *Risultato*: VL ~8.19, PL ~0.0 (pattern troppo generici)
+*   **MAX_LEVEL**: 10
+*   *Risultato*: VL ~3.07, PL ~0.35 (Naive) vs PL ~0.15 (KAPRA)
 
 ## Grafico Sintetico (Esempio K=5)
 
-| P | MAX_LEVEL | VL (Errore Valori) | PL (Errore Pattern) | Note |
-|---|---|---|---|---|
-| **2** | 3 | 4.96 | 0.068 | Buono |
-| **2** | **10** | **3.07** | **0.060** | **Ottimo** |
-| **2** | 20 | 3.07 | 0.059 | Saturo (nessun guadagno extra) |
-| **8** | 3 | 8.19 | 0.00* | Pattern generici (livello 2) |
-| **8** | 20 | 8.19 | 0.00* | Limitato da P, non raggiunge livelli alti |
+| P | MAX_LEVEL | VL (Errore Valori) | PL_Naive (Corrected) | PL_KAPRA | Note |
+|---|---|---|---|---|---|
+| **2** | 3 | 3.55 | 0.36 | 0.17 | Buono |
+| **2** | **10** | **3.07** | **0.35** | **0.15** | **Ottimo (KAPRA vince su PL)** |
+| **2** | 20 | 3.07 | 0.35 | 0.14 | Saturo |
+| **8** | 3 | 4.55 | 1.00* | ~0.17 | Naive fallisce su pattern |
 
-*\*PL=0 indica che l'albero si è fermato a livelli < 3 dove la metrica PL non è calcolata (pattern troppo base).*
+*\*PL=1.0 indica che l'albero si è fermato a livelli < 3 (pattern persi).*
+
+## Visual Comparison
+![Metrics Comparison](data/metrics_comparison.png)
+

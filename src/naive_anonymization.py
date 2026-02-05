@@ -292,7 +292,7 @@ def run_naive_anonymization(K=8, P=2, MAX_LEVEL=10, verbose=True):
                 if leaf_level >= 3:
                      pl = calculate_pattern_loss(ts, leaf_pattern, leaf_level)
                 else:
-                     pl = 0 # O max?
+                     pl = 1.0 # Max loss for no pattern retention
                 total_pl += pl
             except Exception as e:
                 pass
@@ -304,6 +304,7 @@ def run_naive_anonymization(K=8, P=2, MAX_LEVEL=10, verbose=True):
     # Esportazione
     cols_to_drop = ['Value_Loss', 'Level'] # Mantenere Pattern? Forse.
     df_export = df_final.drop(columns=[c for c in cols_to_drop if c in df_final.columns])
+    # df_export = df_final.copy()
     if 'GroupID' in df_export.columns:
         cols = ['GroupID'] + [c for c in df_export.columns if c != 'GroupID']
         df_export = df_export[cols]

@@ -277,7 +277,7 @@ def run_kapra_anonymization(K=DEFAULT_K, P=DEFAULT_P, SAX_LEVEL=DEFAULT_SAX_LEVE
                 except:
                     pl = 0
             else:
-                pl = 0 
+                pl = 1.0 
                 
             total_pl += pl
             
@@ -292,7 +292,7 @@ def run_kapra_anonymization(K=DEFAULT_K, P=DEFAULT_P, SAX_LEVEL=DEFAULT_SAX_LEVE
             for h_idx in range(len(lower)):
                 l_val = lower[h_idx]
                 u_val = upper[h_idx]
-                csv_row[f'H{h_idx+1}'] = f"[{l_val:.2f}-{u_val:.2f}]"
+                csv_row[f'H{h_idx+1}'] = f"[{int(l_val)}-{int(u_val)}]"
                 
             final_csv_rows.append(csv_row)
             
@@ -316,7 +316,7 @@ def run_kapra_anonymization(K=DEFAULT_K, P=DEFAULT_P, SAX_LEVEL=DEFAULT_SAX_LEVE
     
     # Save CSV
     output_df = pd.DataFrame(final_csv_rows)
-    cols = ['GroupID'] + [f'H{i+1}' for i in range(8)] + ['Performance_SD', 'Pattern', 'Level', 'Value_Loss']
+    cols = ['GroupID'] + [f'H{i+1}' for i in range(8)] + ['Performance_SD', 'Pattern']
     output_df = output_df[cols]
     
     output_path = os.path.join(os.path.dirname(__file__), '../docs/data/kapra_anonymized.csv')

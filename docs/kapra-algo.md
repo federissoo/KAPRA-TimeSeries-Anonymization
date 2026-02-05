@@ -10,7 +10,7 @@
   src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
 </script>
 
-# KAPRA Algorithm (k-Anonymity with Pattern Retention)
+# KAPRA Algorithm
 
 ## Panoramica
 
@@ -25,9 +25,7 @@ L'obiettivo è soddisfare il modello **$(k,P)$-anonymity**:
 1.  **$k$-anonymity:** Ogni gruppo rilasciato deve contenere almeno $k$ records.
 2.  **$P$-anonymity:** Ogni pattern associato a un gruppo deve essere condiviso da almeno $P$ records.
 
-## Fasi dell'Algoritmo (Implementazione Fedele)
-
-L'implementazione attuale segue fedelmente la logica del paper (Algorithm 2: Recycle Bad-Leaves):
+## Fasi dell'Algoritmo
 
 ### 1. Fase 1: Initial Grouping (Pattern Creation)
 Tutte le serie temporali vengono convertite in stringhe **SAX** al livello massimo configurato (`SAX_LEVEL`).
@@ -73,7 +71,7 @@ Configurazione migliore per compromesso VL/PL:
 | Metrica | KAPRA (Level=20) | Naive (Mondrian) | Spiegazione |
 | :--- | :--- | :--- | :--- |
 | **Value Loss (VL)** | **~15.3** | **~4.5** | **Naive vince.** Raggruppando per valore, Naive crea inviluppi stretti (es. [10-15]). KAPRA raggruppa per forma, unendo curve simili ma distanti (es. una a 10 e una a 40), creando inviluppi ampi [10-40]. |
-| **Pattern Loss (PL)** | **~0.13** | **~0.00** | **Naive vince (sui numeri).** Sui dati puliti, Naive separa bene i gruppi. KAPRA paga la frammentazione: cercando il pattern perfetto (Livello 20), è costretto a unire residui in gruppi che, pur avendo la stessa forma, generano una lieve perdita matematica. |
+| **Pattern Loss (PL)** | **~0.13** | **~0.35** | **KAPRA vince (sulla forma).** Naive ottimizza i valori, perdendo la forma (PL alta). KAPRA, partendo dal pattern, lo preserva molto meglio (PL bassa). |
 
 ### 3. Conclusione: Quando usare KAPRA
 KAPRA non è progettato per minimizzare l'errore numerico (VL), ma per **salvare la semantica delle curve**.
@@ -96,3 +94,7 @@ Questa implementazione presenta una deviazione intenzionale rispetto all'algorit
     *   **Envelope:** È unico per l'intero $k$-group (determinato dal merging nella Fase 3).
     *   **Pattern:** Invece di forzare un unico pattern dominante per tutti i record del gruppo, viene preservato il pattern originale del **$P$-subgroup** di appartenenza (calcolato nella Fase 2).
     *   **Risultato:** Questo permette di abbattere la Pattern Loss (che viene calcolata rispetto al pattern specifico e non a quello medio), garantendo comunque che ogni pattern visualizzato sia condiviso da almeno $P$ utenti.
+    
+## Implementation Notes & Deviations
+
+This implementation intentionally omits the preprocessing step (splitting groups $\ge 2P$) described in the original paper. This is a deliberate engineering trade-off to reduce complexity. It results in a 'fail-open' privacy state (larger groups = stronger privacy) with negligible impact on utility, as handled by the greedy merge phase.

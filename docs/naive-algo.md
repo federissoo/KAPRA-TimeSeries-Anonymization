@@ -87,7 +87,7 @@ I seguenti risultati fanno riferimento al **Best Trade-off Scenario** ($K=5, P=2
 | --- | --- | --- |
 | **Tempo di Esecuzione** | **Rapido** | L'algoritmo scala efficientemente grazie alla struttura ad albero. |
 | **Avg Instant Value Loss (VL)** | **~3.07** | Errore medio sui valori molto contenuto grazie alla libertà di partizionamento data da $K=5$. |
-| **Avg Pattern Loss (PL)** | **~0.060** | Bassissima distorsione della forma. L'uso di un `MAX_LEVEL=10` permette di distinguere picchi e micro-trend con grande precisione. |
+| **Avg Pattern Loss (PL)** | **~0.35** | Distorsione della forma più elevata rispetto a KAPRA, poiché l'algoritmo ottimizza per valori (VL) ignorando parzialmente la forma. |
 | **Range Query Error** | **< 10%** | La precisione nelle query di intervallo rimane alta grazie alla bassa Value Loss. |
 
 ### Dettaglio delle Formule Utilizzate
