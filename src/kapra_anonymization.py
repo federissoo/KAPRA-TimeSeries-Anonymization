@@ -262,27 +262,30 @@ def run_kapra_anonymization(K=DEFAULT_K, P=DEFAULT_P, SAX_LEVEL=DEFAULT_SAX_LEVE
         # Envelope & VL
         lower, upper, vl = calculate_envelope_and_vl(ts_data)
         
-        group_pattern = group['sax']
-        group_level = group['level'] # Needed for PL calc
+        # group_pattern = group['sax'] # OLD: Dominant pattern
+        # group_level = group['level'] # OLD: Dominant level
         
         for r in records:
+            # Use the specific P-subgroup pattern/level for this record
+            r_pattern = r['sax']
+            r_level = r['level']
+            
             # PL calculation depends on the level of the pattern
-            # If level is 0 or '*', PL is undefined or Max?
-            if group_level >= 3:
+            if r_level >= 3:
                 try:
-                    pl = calculate_pattern_loss(r['timeseries'], group_pattern, group_level)
+                    pl = calculate_pattern_loss(r['timeseries'], r_pattern, r_level)
                 except:
                     pl = 0
             else:
-                pl = 0 # Too generic to have pattern loss? Or 1?
+                pl = 0 
                 
             total_pl += pl
             
             csv_row = {
                 'GroupID': group_id + 1,
                 'Performance_SD': r['row_data']['Performance_SD'],
-                'Pattern': group_pattern,
-                'Level': group_level, # Debug info
+                'Pattern': r_pattern, # Use individual pattern
+                'Level': r_level,   # Use individual level
                 'Value_Loss': vl
             }
             

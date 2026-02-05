@@ -79,3 +79,14 @@ Configurazione migliore per compromesso VL/PL:
 KAPRA non è progettato per minimizzare l'errore numerico (VL), ma per **salvare la semantica delle curve**.
 *   Usa **Naive** se ti interessa sapere che "il valore era circa 50".
 *   Usa **KAPRA** se ti interessa sapere che "c'era un picco seguito da una discesa", indipendentemente se questo è avvenuto a valore 10 o 100.
+
+## Note Implementative e Differenze rispetto al Paper
+
+Questa implementazione presenta una deviazione intenzionale rispetto all'algoritmo KAPRA teorico descritto nel paper originale (Sezione 5.3.3):
+
+* **Omissione del Preprocessing (Splitting dei gruppi $\ge 2P$):**
+    Nel paper originale è prevista una fase preliminare che divide ricorsivamente i *P-subgroups* molto grandi (dimensione $\ge 2P$) prima di formare i *k-groups*. Questa implementazione omette tale passaggio.
+    
+    * **Motivazione:** Si tratta di una scelta ingegneristica per ridurre la complessità del codice (evitando logiche ricorsive top-down all'interno del flusso bottom-up) senza compromettere i requisiti di sicurezza.
+    * **Impatto sulla Privacy:** Nessuno. Mantenere gruppi più grandi di quanto strettamente necessario rappresenta uno stato di **"fail-open"**: la privacy è garantita in eccesso, poiché un gruppo più numeroso offre un anonimato ancora più forte (soddisfacendo ampiamente i requisiti $k$ e $P$).
+    * **Impatto sull'Utilità:** Potrebbe esserci un marginale aumento della *Value Loss* per alcuni dataset specifici, ma i test (vedi report di ottimizzazione) confermano che la strategia di merging greedy della Fase 3 gestisce efficacemente la formazione dei gruppi.
