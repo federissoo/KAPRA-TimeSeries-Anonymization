@@ -11,10 +11,11 @@ from src.sax_utils import ts_to_sax, calculate_pattern_loss, sax_to_values
 from src.kapra_utils import calculate_envelope_and_vl
 
 # --- Configuration ---
-K = 8
-P = 2
-SAX_LEVEL = 8
-N_SEGMENTS = 4
+# Defaults (can be overridden by function args)
+DEFAULT_K = 8
+DEFAULT_P = 2
+DEFAULT_SAX_LEVEL = 8
+DEFAULT_N_SEGMENTS = 4
 
 def load_data(filepath):
     """Load the dataset."""
@@ -42,17 +43,24 @@ def calculate_merge_cost(group1_records, group2_records):
     combined = group1_records + group2_records
     return calculate_group_vl(combined)
 
-def main():
+def run_kapra_anonymization(K=DEFAULT_K, P=DEFAULT_P, SAX_LEVEL=DEFAULT_SAX_LEVEL, N_SEGMENTS=DEFAULT_N_SEGMENTS, verbose=True):
     start_time = time.time()
     
     # 1. Load Data
     data_path = os.path.join(os.path.dirname(__file__), '../docs/data/dataset_raw.csv')
     if not os.path.exists(data_path):
-         # Fallback for running from src directly
          data_path = os.path.join(os.path.dirname(__file__), '../../docs/data/dataset_raw.csv')
     
-    print(f"Loading data from {data_path}...")
-    df = load_data(data_path)
+    if verbose:
+        print(f"--- KAPRA Algorithm (K={K}, P={P}, MaxLevel={SAX_LEVEL}) ---")
+        print(f"Loading data from {data_path}...")
+    
+    try:
+        df = load_data(data_path)
+    except FileNotFoundError:
+        print(f"Error: {data_path} not found.")
+        return None
+
     ts_data = get_time_series(df)
     
     # Prepare records with metadata
@@ -63,239 +71,221 @@ def main():
             'original_index': idx,
             'timeseries': ts,
             'row_data': row,
-            'sax': '', # To be filled
+            'sax': '', 
+            'level': SAX_LEVEL, # Track distinct level per record/group
             'group_id': None
         })
         
-    print(f"Total records: {len(records)}")
+    if verbose:
+        print(f"Total records: {len(records)}")
+        print("\n--- Phase 1 & 2: Initial Grouping & Recycling (Bottom-Up) ---")
     
-    # ==========================================
-    # Phase 1: Initial Grouping (Pattern Creation)
-    # ==========================================
-    print("\n--- Phase 1: Initial Grouping ---")
+    # In true KAPRA/Algorithm 2:
+    # We start with ALL records at MAX_LEVEL.
+    # We identify Bad Leaves (groups < P).
+    # We iteratively lower the level for Bad Leaves only, trying to merge them.
     
-    # Convert to SAX and group
-    groups = {} # sax_string -> list of records
+    # Initial Grouping at MAX_LEVEL
+    current_level = SAX_LEVEL
     
-    for r in records:
-        sax = ts_to_sax(r['timeseries'], level=SAX_LEVEL, n_segments=N_SEGMENTS)
-        r['sax'] = sax
-        if sax not in groups:
-            groups[sax] = []
-        groups[sax].append(r)
-        
-    p_groups = []   # List of dicts: {'sax': str, 'records': list, 'type': 'good'}
-    bad_leaves = [] # List of dicts: {'sax': str, 'records': list, 'type': 'bad'}
-    
-    for sax, group_records in groups.items():
-        group_info = {'sax': sax, 'records': group_records}
-        if len(group_records) >= P:
-            group_info['type'] = 'good'
-            p_groups.append(group_info)
-        else:
-            group_info['type'] = 'bad'
-            bad_leaves.append(group_info)
-            
-    print(f"P-groups (Good Leaves): {len(p_groups)}")
-    print(f"Bad Leaves: {len(bad_leaves)}")
-    
-    # ==========================================
-    # Phase 2: Recycle Bad-Leaves
-    # ==========================================
-    print("\n--- Phase 2: Recycle Bad-Leaves ---")
-    
-    if not p_groups and bad_leaves:
-        # Edge case: No P-groups exist initially. 
-        # Should create at least one P-group from largest bad leaves or force merge?
-        # For this implementation, we assume at least one P-group usually exists.
-        # If not, we might treat the largest bad leaf as a P-group (if >= P not met, but that contradicts definition).
-        # Let's panic-merge bad leaves to form a P-group if needed or just skip.
-        print("Warning: No P-groups found. Bad leaves cannot be recycled properly.")
-    
-    for bad_group in bad_leaves:
-        # Calculate representative for bad group (mean)
-        bad_ts = np.array([r['timeseries'] for r in bad_group['records']])
-        bad_mean_ts = np.mean(bad_ts, axis=0)
-        
-        best_p_group = None
-        min_dist = float('inf')
-        
-        # Find nearest P-group
-        for p_group in p_groups:
-            p_ts = np.array([r['timeseries'] for r in p_group['records']])
-            p_mean_ts = np.mean(p_ts, axis=0)
-            
-            # Euclidean distance between means
-            dist = np.linalg.norm(bad_mean_ts - p_mean_ts)
-            
-            if dist < min_dist:
-                min_dist = dist
-                best_p_group = p_group
-        
-        if best_p_group:
-            # Move records to best P-group
-            # Update SAX of moved records to match P-group
-            target_sax = best_p_group['sax']
-            for r in bad_group['records']:
-                r['sax'] = target_sax 
-                best_p_group['records'].append(r)
-        else:
-            # Should not happen if p_groups is not empty
-            print(f"Could not recycle bad group {bad_group['sax']}")
+    # Helper to group records by their SAX at a specific level
+    def group_records_by_sax(record_list, level):
+        groups = {}
+        for r in record_list:
+            # Recompute SAX at 'level'
+            # Note: r['timeseries'] is constant. 
+            sax = ts_to_sax(r['timeseries'], level=level, n_segments=N_SEGMENTS)
+            r['sax'] = sax # Update current sax
+            r['level'] = level
+            if sax not in groups:
+                groups[sax] = []
+            groups[sax].append(r)
+        return groups
 
-    # Reform the list of groups (now all are technically P-groups or candidate groups)
-    # Filter out empty bad groups (they were moved)
-    # Actually, we just use p_groups now, as bad_leaves content was moved into them.
-    # What if a bad_leaf was not moved? (Only if no P-groups exist).
+    # 1. Initial State: All records are "bad" (candidates) or "good"
+    # Actually, we group all.
+    all_groups = group_records_by_sax(records, current_level)
     
-    current_groups = p_groups
-    print(f"Groups after Phase 2: {len(current_groups)}")
+    final_p_groups = [] # List of {'sax':..., 'records':..., 'level':...}
+    bad_records = []
+    
+    # Separate Good and Bad groups at MAX_LEVEL
+    for sax, recs in all_groups.items():
+        if len(recs) >= P:
+            final_p_groups.append({
+                'sax': sax, 
+                'records': recs, 
+                'level': current_level,
+                'type': 'good-leaf'
+            })
+        else:
+            bad_records.extend(recs)
+            
+    if verbose:
+        print(f"Level {current_level}: {len(final_p_groups)} good groups found. {len(bad_records)} records remaining in bad leaves.")
+        
+    # 2. Recycle Loop (Algorithm 2)
+    # While bad records exist, lower level, regroup, extract good groups.
+    current_level -= 1
+    
+    while bad_records and current_level >= 3: # Assuming min SAX level typically 3 or 2
+        # Regroup bad records at lower level
+        groups = group_records_by_sax(bad_records, current_level)
+        
+        new_bad_records = []
+        
+        for sax, recs in groups.items():
+            if len(recs) >= P:
+                final_p_groups.append({
+                    'sax': sax, 
+                    'records': recs, 
+                    'level': current_level,
+                    'type': 'good-leaf-recycled'
+                })
+            else:
+                new_bad_records.extend(recs)
+                
+        bad_records = new_bad_records
+        if verbose and len(bad_records) > 0:
+             print(f"Level {current_level}: Found new good groups. {len(bad_records)} records still bad.")
+             
+        current_level -= 1
+        
+    # Handle remaining bad records (suppression or merge to root)
+    if bad_records:
+        if verbose:
+            print(f"Warning: {len(bad_records)} records could not form P-groups even at lowest level.")
+        # Option A: Suppress (Paper says "Suppress all time-series contained in bad leaves")
+        # Option B: Merge them all into a generic group (Level 1/2) if >= P?
+        # Let's try to group them at Level 2 or 1.
+        # If still < P, strict suppression.
+        # For utility, let's create a "garbage" group if size >= P.
+        if len(bad_records) >= P:
+             final_p_groups.append({
+                'sax': '*', 
+                'records': bad_records, 
+                'level': 0, # Symbolic
+                'type': 'suppressed-but-kept'
+            })
+        else:
+             # Strict suppression (exclude from output)
+             pass
+             
+    current_groups = final_p_groups
+    if verbose:
+        print(f"Total Groups after Phase 2: {len(current_groups)}")
     
     # ==========================================
     # Phase 3: Formation of K-groups
     # ==========================================
-    print("\n--- Phase 3: Formation of K-groups ---")
+    if verbose:
+        print("\n--- Phase 3: Formation of K-groups ---")
     
-    # We need to ensure every group has size >= K.
-    # Greedy approach:
-    # 1. Identify groups with size < K.
-    # 2. Pick one, merge with nearest group (minimizing VL increase).
-    # 3. Repeat until all >= K.
-    
+    # Standard Greedy Merge to satisfy K
     while True:
-        # Identify invalid groups
         invalid_indices = [i for i, g in enumerate(current_groups) if len(g['records']) < K]
-        
         if not invalid_indices:
-            break # All valid
+            break 
             
-        # Pick one invalid group (e.g., the smallest)
-        # Sort invalid indices by size of group to pick smallest first
         invalid_indices.sort(key=lambda i: len(current_groups[i]['records']))
         idx_to_merge = invalid_indices[0]
         group_to_merge = current_groups[idx_to_merge]
         
-        # Find best merge partner
         best_partner_idx = -1
         min_merge_cost = float('inf')
         
         for i, other_group in enumerate(current_groups):
             if i == idx_to_merge:
                 continue
-                
-            # Calculate cost (VL of combined group)
-            cost = calculate_merge_cost(group_to_merge['records'], other_group['records'])
             
+            cost = calculate_merge_cost(group_to_merge['records'], other_group['records'])
             if cost < min_merge_cost:
                 min_merge_cost = cost
                 best_partner_idx = i
                 
         if best_partner_idx != -1:
-            # Merge
             partner_group = current_groups[best_partner_idx]
             
-            # Combine records
-            # Which SAX pattern to keep?
-            # Usually strict KAPRA keeps pattern of the larger group or re-computes?
-            # The prompt says: "Uniscilo al P-group più vicino...".
-            # Usually we adopt the pattern of the dominating group or keep them separate in terms of pattern but same ID?
-            # "Importante: I record spostati 'adottano' il pattern del P-group ospitante" applies to Phase 2.
-            # In Phase 3, we are merging P-groups.
-            # Let's assume we maintain the pattern of the destination (partner) or just treat them as a group.
-            # BUT the output requires "Pattern". If a group has mixed patterns, that's an issue.
-            # However, in Phase 1 & 2 we aligned patterns.
-            # If we merge two P-groups with DIFFERENT patterns, the final group will have mixed patterns logically.
-            # BUT KAPRA goal is Pattern Retention.
-            # The paper says Phase 3 forms K-groups.
-            # Usually we treat the final group as having a "representative" pattern or we report the pattern of the majority?
-            # Or - maybe we don't change the pattern in Phase 3, but they share the same GroupID and calculating VL is on values.
-            # The prompt asks for "Pattern (il pattern SAX finale del gruppo)".
-            # If we merge, we should probably pick one pattern.
-            # Let's pick the pattern of the larger group (or partner).
+            # Merging
+            # Logic: Combined records.
+            # Pattern: The paper doesn't specify deeply for Phase 3 pattern.
+            # We keep the pattern of the dominating group for reporting or a generalized one?
+            # If we merge a Level 10 group and a Level 5 group, what is the result?
+            # KAPRA aims to retain pattern. Reporting the separate patterns in the same K-group is valid in (k,P).
+            # (k,P) allows groups to have sub-groups with different P-patterns.
+            # BUT the output CSV structure usually implies 1 pattern per "Group".
+            # If we must output 1 pattern, we pick the dominant one.
             
-            # MERGING
             merged_records = group_to_merge['records'] + partner_group['records']
             
-            # Decide dominating pattern
+            # Domination logic
             if len(partner_group['records']) >= len(group_to_merge['records']):
                 dom_sax = partner_group['sax']
+                dom_level = partner_group['level']
             else:
                 dom_sax = group_to_merge['sax']
-                
-            # Update records' sax to dominating pattern?
-            # If we want "Pattern Retention", maybe we shouldn't overwrite it if they were distinct valid P-groups?
-            # But for the output CSV, we have one "Pattern" column per group.
-            # So we effectively generalize the pattern too.
-            for r in merged_records:
-                r['sax'] = dom_sax
+                dom_level = group_to_merge['level']
                 
             new_group = {
                 'sax': dom_sax,
                 'records': merged_records,
+                'level': dom_level,
                 'type': 'merged'
             }
             
-            # Remove old groups and add new one
-            # Be careful with indices since we change the list
-            # Easier to rebuild list: remove both, add new
-            
-            # We remove by index, so we need to be careful.
-            # Remove higher index first to preserve lower index
             idx1, idx2 = sorted([idx_to_merge, best_partner_idx], reverse=True)
             current_groups.pop(idx1)
             current_groups.pop(idx2)
-            
             current_groups.append(new_group)
             
         else:
-            # No partner found? Should not happen unless only 1 group left < K.
-            # If only 1 group exists and < K, we can't do anything.
-            print("Warning: Cannot merge remaining group.")
+            if verbose:
+                print("Warning: Cannot merge remaining group.")
             break
 
-    print(f"Final K-groups: {len(current_groups)}")
+    if verbose:
+        print(f"Final K-groups: {len(current_groups)}")
     
     # ==========================================
     # Generate Output & Metrics
     # ==========================================
     
-    output_rows = []
+    final_csv_rows = []
     total_vl = 0
     total_pl = 0
     total_records = 0
-    
-    final_csv_rows = []
     
     for group_id, group in enumerate(current_groups):
         records = group['records']
         ts_data = np.array([r['timeseries'] for r in records])
         
-        # Calculate Envelope
+        # Envelope & VL
         lower, upper, vl = calculate_envelope_and_vl(ts_data)
         
-        # Add to totals
-        total_vl += vl * len(records) # Weighted by size? Usually average VL is sum(VL) / num_groups OR avg VL per record?
-        # Prompt says "Average Value Loss". Usually over all records or groups?
-        # Standard: Sum(VL_group * |group|) / Total_Records gives avg VL per record.
-        # OR just Avg of VLs of groups.
-        # Let's use weighted average (per record) as it's more representative.
-        
-        # Calculate Pattern Loss for each record
         group_pattern = group['sax']
+        group_level = group['level'] # Needed for PL calc
         
         for r in records:
-            pl = calculate_pattern_loss(r['timeseries'], group_pattern, SAX_LEVEL)
+            # PL calculation depends on the level of the pattern
+            # If level is 0 or '*', PL is undefined or Max?
+            if group_level >= 3:
+                try:
+                    pl = calculate_pattern_loss(r['timeseries'], group_pattern, group_level)
+                except:
+                    pl = 0
+            else:
+                pl = 0 # Too generic to have pattern loss? Or 1?
+                
             total_pl += pl
             
-            # Prepare CSV row
-            # GroupID, H1..H8 (interval), Performance_SD, Pattern
             csv_row = {
                 'GroupID': group_id + 1,
                 'Performance_SD': r['row_data']['Performance_SD'],
-                'Pattern': group_pattern
+                'Pattern': group_pattern,
+                'Level': group_level, # Debug info
+                'Value_Loss': vl
             }
             
-            # Format intervals [min-max]
             for h_idx in range(len(lower)):
                 l_val = lower[h_idx]
                 u_val = upper[h_idx]
@@ -308,39 +298,39 @@ def main():
     end_time = time.time()
     execution_time = end_time - start_time
     
-    avg_vl = total_vl / len(current_groups) # Average per group? Or per record?
-    # Let's print both or stick to one. "Average Value Loss".
-    # Usually in k-anon papers, GCP (Global Certainty Penalty) is normalized by # cells.
-    # Here VL is per group. Let's return the unweighted average across records?
-    # Actually, VL is defined for a group. If we want global metric:
-    # Let's use the average VL per group for now, but also tracking weighted might be good.
-    # User just said "Average Value Loss". I'll compute average VL across all groups. 
-    # WAIT: VL is an instant loss for the group. If I have 1 huge group and 1 tiny group, unweighted avg is misleading.
-    # Let's calculate: (Sum of VL of each group * size of group) / total records is NOT dimensionally correct for "Average VL".
-    # VL is already "per timestamp" (sqrt/n).
-    # Let's just average the VL values of the Groups.
-    avg_vl_groups = np.mean([calculate_group_vl(g['records']) for g in current_groups])
+    if current_groups:
+        avg_vl_groups = np.mean([calculate_group_vl(g['records']) for g in current_groups])
+    else:
+        avg_vl_groups = 0
+        
+    avg_pl = total_pl / total_records if total_records > 0 else 0
     
-    avg_pl = total_pl / total_records
-    
-    print("\n--- Final Metrics ---")
-    print(f"Execution Time: {execution_time:.4f} seconds")
-    print(f"Average Value Loss (per group): {avg_vl_groups:.4f}")
-    print(f"Average Pattern Loss (per record): {avg_pl:.4f}")
+    if verbose:
+        print("\n--- Final Metrics ---")
+        print(f"Execution Time: {execution_time:.4f} seconds")
+        print(f"Average Value Loss (per group): {avg_vl_groups:.4f}")
+        print(f"Average Pattern Loss (per record): {avg_pl:.4f}")
     
     # Save CSV
     output_df = pd.DataFrame(final_csv_rows)
-    # Reorder columns: GroupID, H1...H8, Performance_SD, Pattern
-    cols = ['GroupID'] + [f'H{i+1}' for i in range(8)] + ['Performance_SD', 'Pattern']
+    cols = ['GroupID'] + [f'H{i+1}' for i in range(8)] + ['Performance_SD', 'Pattern', 'Level', 'Value_Loss']
     output_df = output_df[cols]
     
     output_path = os.path.join(os.path.dirname(__file__), '../docs/data/kapra_anonymized.csv')
-    
-    # Ensure dir exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    
     output_df.to_csv(output_path, index=False)
-    print(f"Anonymized data saved to: {output_path}")
+
+    return {
+        'K': K,
+        'P': P,
+        'SAX_LEVEL': SAX_LEVEL,
+        'Time': execution_time,
+        'VL': avg_vl_groups,
+        'PL': avg_pl
+    }
+
+def main():
+    run_kapra_anonymization()
 
 if __name__ == "__main__":
     main()

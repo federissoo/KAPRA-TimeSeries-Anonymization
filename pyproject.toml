@@ -11,6 +11,7 @@ dependencies = [
     "pandas",       # Fondamentale per i CSV
     "matplotlib",   # Fondamentale per i grafici
     "seaborn",      # Per grafici più belli (opzionale)
+    "pypdf (>=6.6.2,<7.0.0)",
 ]
 
 [tool.poetry]

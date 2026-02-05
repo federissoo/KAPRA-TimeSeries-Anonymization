@@ -1,74 +1,119 @@
-import numpy as np
 import pandas as pd
+import numpy as np
 import os
+import random
 
-def generate_structured_work_activity(n_employees=200):
-    np.random.seed(42)
+def generate_dataset():
+    """
+    Generate synthetic dataset following docs/dataset-generation.md specifications.
+    Schema: ID, Name, Surname, H1-H8 (int 0-50), Performance_SD (Low/Medium/High)
+    Patterns: Rising, Falling, Peak, Flat
+    """
     
-    first_names = ['Mario', 'Giulia', 'Luca', 'Elena', 'Alessandro', 'Sofia', 'Francesco', 'Anna', 'Matteo', 'Chiara']
-    last_names = ['Rossi', 'Bianchi', 'Verdi', 'Russo', 'Ferrari', 'Esposito', 'Romano', 'Gallo', 'Conti', 'Marini']
+    n_rows = 3000
+    n_cols = 8 # H1 to H8
     
+    names = ["Francesco", "Alessandro", "Lorenzo", "Mattia", "Leonardo", "Andrea", "Gabriele", "Matteo", 
+             "Tommaso", "Edoardo", "Sofia", "Giulia", "Aurora", "Alice", "Ginevra", "Emma", "Giorgia", "Greta", "Beatrice"]
+    surnames = ["Rossi", "Russo", "Ferrari", "Esposito", "Bianchi", "Romano", "Colombo", "Ricci", 
+                "Marino", "Greco", "Bruno", "Gallo", "Conti", "De Luca", "Mancini", "Costa", "Giordano", "Rizzo"]
+
     data = []
     
-    # Pattern base (Forma della curva)
-    base_rising = np.linspace(10, 40, 8) 
-    base_falling = np.linspace(40, 10, 8)
-    base_peak = np.array([10, 20, 30, 40, 40, 30, 20, 10])
-    base_flat = np.array([25, 25, 25, 25, 25, 25, 25, 25])
-
-    patterns = [base_rising, base_falling, base_peak, base_flat]
+    # 1. Pattern Definitions (Archetypes) used to optimize distinctness
+    # "Rising" -> Funnel / Linear Up
+    # "Falling" -> Funnel / Linear Down
+    # "Peak" -> Bell
+    # "Flat" -> Cylinder
     
-    for i in range(n_employees):
-        name = np.random.choice(first_names)
-        surname = np.random.choice(last_names)
+    def generate_base_pattern(ptype, length=8):
+        x = np.linspace(0, 1, length)
         
-        # 1. Scelta del pattern (FORMA)
-        base_pattern = patterns[np.random.choice(len(patterns))]
+        if ptype == 'Rising':
+            # Start low (e.g. 5-15) end high (e.g. 35-45)
+            start = np.random.uniform(5, 15)
+            end = np.random.uniform(35, 45)
+            # Linear interpolation
+            slope = end - start
+            return start + slope * x
+            
+        elif ptype == 'Falling':
+             # Start high end low
+            start = np.random.uniform(35, 45)
+            end = np.random.uniform(5, 15)
+            slope = end - start
+            return start + slope * x
+            
+        elif ptype == 'Peak':
+            # Bell curve in the middle
+            # Center roughly at 0.5 (middle of 8 hours)
+            # Use sin(0..pi)
+            base_val = np.random.uniform(10, 20)
+            amp = np.random.uniform(20, 30)
+            s_x = np.linspace(0, np.pi, length)
+            return base_val + amp * np.sin(s_x)
+            
+        elif ptype == 'Flat':
+            # Constant value
+            val = np.random.uniform(20, 40)
+            return np.full(length, val)
+            
+        return np.zeros(length)
+
+    np.random.seed(42)
+
+    for i in range(1, n_rows + 1):
+        # Metadata
+        name = np.random.choice(names)
+        surname = np.random.choice(surnames)
         
-        # 2. Scelta dell'intensità (QUANTITÀ)
-        # Shiftiamo la curva verso l'alto o il basso per simulare chi lavora di più/meno
-        # -10 abbassa la media a 15 (totale ~120)
-        # +10 alza la media a 35 (totale ~280)
-        intensity_shift = np.random.randint(-12, 12) 
+        # 2. Assign Archetype
+        ptype = np.random.choice(['Rising', 'Falling', 'Peak', 'Flat'])
         
-        # 3. Aggiunta rumore
-        noise = np.random.normal(0, 4, size=8) 
+        # Generate base curve (Float)
+        ts = generate_base_pattern(ptype, n_cols)
         
-        # Composizione finale
-        time_series = base_pattern + intensity_shift + noise
+        # 3. Add Variability (Intensity Shift + Noise)
+        # Shift: +/- 5 to keep within range 0-50 mostly
+        shift = np.random.uniform(-5, 5)
+        # Noise: Gaussian
+        noise = np.random.normal(0, 2, n_cols) # Sigma=2 creates visible but not destructive noise
         
-        # Clip per restare in range sensati (0-50)
-        time_series = np.clip(time_series, 0, 50).astype(int)
+        ts_final = ts + shift + noise
         
-        # Calcolo performance
-        # Media base 200. 
-        # Con shift -10 -> 120. Con shift +10 -> 280.
-        total = np.sum(time_series)
+        # Clamp to [0, 50] and Round to Int
+        ts_final = np.clip(ts_final, 0, 50).astype(int)
         
-        # SOGLIE AGGIORNATE
-        # Ho stretto i range attorno alla media di 200
-        Y = 160  # Sotto 180 è Low (media < 22.5 ore/slot)
-        X = 240  # Sopra 220 è High (media > 27.5 ore/slot)
+        # 4. Calculate Sensitive Attribute (Performance_SD) based on Total Activity
+        # Docs: Low (<160), Medium (160-240), High (>240)
+        total_activity = np.sum(ts_final)
+        if total_activity < 160:
+            perf = "Low"
+        elif total_activity <= 240:
+            perf = "Medium"
+        else:
+            perf = "High"
+            
+        row = {
+            'ID': i,
+            'Name': name,
+            'Surname': surname
+        }
+        for j in range(n_cols):
+            row[f'H{j+1}'] = ts_final[j]
         
-        if total < Y: perf = 'Low'
-        elif total > X: perf = 'High'
-        else: perf = 'Medium'
-        
-        row = {'ID': i + 1, 'Name': name, 'Surname': surname}
-        for h in range(8):
-            row[f'H{h+1}'] = time_series[h]
+        # Add sensitive attribute
         row['Performance_SD'] = perf
+        
         data.append(row)
         
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    
+    # Save
+    output_path = os.path.join(os.path.dirname(__file__), 'dataset_raw.csv')
+    df.to_csv(output_path, index=False)
+    print(f"Generated {n_rows} records following {output_path} schema")
+    print("Columns: ID, Name, Surname, H1-H8, Performance_SD")
 
-# Generazione e salvataggio
-df = generate_structured_work_activity(200)
-
-# Stampa di verifica distribuzione
-print("Distribuzione Performance:")
-print(df['Performance_SD'].value_counts())
-
-output_dir = os.path.dirname(os.path.abspath(__file__))
-output_path = os.path.join(output_dir, "dataset_raw.csv")
-df.to_csv(output_path, index=False)
+if __name__ == "__main__":
+    generate_dataset()

@@ -1,63 +1,81 @@
 <script>
-window.MathJax = {
-tex: {
-inlineMath: [[''], ['\(', '\)']],
-displayMath: [['
-
-'], ['
-
-']]
-}
-};
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']]
+    }
+  };
+</script>
+<script id="MathJax-script" async 
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
 </script>
 
-<script id="MathJax-script" async
-src="[https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js](https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js)">
-</script>
+# KAPRA Algorithm (k-Anonymity with Pattern Retention)
 
-# KAPRA Algorithm
+## Panoramica
 
-## Introduzione
-**KAPRA** (k-Anonymity with Pattern Retention Algorithm) è un algoritmo di anonimizzazione progettato specificamente per le serie temporali. A differenza degli approcci tradizionali basati sul partizionamento dei valori (come Mondrian), KAPRA adotta un approccio **bottom-up** guidato dalla forma (pattern) dei dati.
+**KAPRA** è un algoritmo di anonimizzazione *bottom-up* disegnato per preservare la forma (pattern) delle serie temporali, anche a costo di una maggiore perdita sui valori (Value Loss).
 
-L'obiettivo è soddisfare il modello **$(k,P)$-anonymity**, garantendo che:
-1.  Ogni gruppo contenga almeno $k$ individui (privacy dell'identità).
-2.  Ogni pattern pubblicato sia condiviso da almeno $P$ individui (privacy del pattern).
+A differenza dell'algoritmo Naive (che parte dall'intero dataset e lo divide top-down basandosi sui valori e poi sulla forma), KAPRA opera in modo **Bottom-Up**:
+1.  Parte assumendo il massimo dettaglio di forma possibile (Livello SAX alto).
+2.  Raggruppa le serie con forma identica.
+3.  Per i gruppi troppo piccoli ("Bad Leaves"), riduce *progressivamente* il livello di dettaglio (Generalizzazione della forma) finché non trova gruppi simili con cui fondersi o formare nuovi gruppi validi.
 
-## Architettura dell'Algoritmo
+L'obiettivo è soddisfare il modello **$(k,P)$-anonymity**:
+1.  **$k$-anonymity:** Ogni gruppo rilasciato deve contenere almeno $k$ records.
+2.  **$P$-anonymity:** Ogni pattern associato a un gruppo deve essere condiviso da almeno $P$ records.
 
-L'algoritmo si struttura in tre fasi sequenziali fondamentali.
+## Fasi dell'Algoritmo (Implementazione Fedele)
 
-### Fase 1: Initial Grouping (Creazione dei Pattern)
-In questa fase, ogni serie temporale viene convertita in una stringa simbolica **SAX (Symbolic Aggregate approXimation)**.
-* Si applica la normalizzazione Z-score.
-* Si riduce la dimensionalità (PAA).
-* Si discretizza in simboli (es. "abc", "cba").
+L'implementazione attuale segue fedelmente la logica del paper (Algorithm 2: Recycle Bad-Leaves):
 
-Le serie con la **stessa identica stringa SAX** vengono raggruppate.
-* **Good-Leaf:** Un gruppo con dimensione $\ge P$.
-* **Bad-Leaf:** Un gruppo con dimensione $< P$.
+### 1. Fase 1: Initial Grouping (Pattern Creation)
+Tutte le serie temporali vengono convertite in stringhe **SAX** al livello massimo configurato (`SAX_LEVEL`).
+*   Si creano gruppi basati sull'uguaglianza esatta della stringa SAX.
+*   **Good-Leaf:** Gruppo con dimensione $\ge P$.
+*   **Bad-Leaf:** Gruppo con dimensione $< P$.
 
-### Fase 2: Recycle Bad-Leaves (Il cuore di KAPRA)
-Questa è la differenza principale rispetto all'algoritmo Naive. Invece di sopprimere i dati o generalizzare verso l'alto (appiattendo il pattern), KAPRA **ricicla** le Bad-Leaves.
+> **Nota Implementativa (Efficienza):** Sebbene il paper descriva la costruzione di un "Albero SAX" completo per identificare questi gruppi, la nostra implementazione utilizza una **Hash Map** diretta (dizionario SAX $\to$ records).
+> *   **Motivo:** È computazionalmente più efficiente ($O(N)$) rispetto alla navigazione ricorsiva di un albero e produce un output *funzionalmente identico* (i gruppi foglia sono gli stessi).
 
-1.  Per ogni **Bad-Leaf**, si cerca la **Good-Leaf più simile** (distanza Euclidea minima tra i profili medi).
-2.  I record della Bad-Leaf vengono spostati nella Good-Leaf.
-3.  **Adattamento:** I record spostati assumono il pattern della Good-Leaf ospitante.
 
-> **Risultato:** Alla fine di questa fase, esistono solo gruppi con dimensione $\ge P$ e con pattern molto dettagliati (livello SAX alto), minimizzando la perdita di informazione sulla forma.
+### 2. Fase 2: Service Level Agreement (Recycle Bad-Leaves)
+Invece di forzare l'unione delle Bad-Leaves al "vicino più prossimo" (approccio geometrico), KAPRA applica una **reiterazione con generalizzazione**:
+1.  Finché esistono Bad-Leaves e il livello SAX > 1:
+    *   Si riduce il livello SAX di 1 (es. da 10 a 9) *solo* per i record nelle Bad-Leaves.
+    *   Si ricalcolano i gruppi per questi record al nuovo livello.
+    *   Se si formano nuovi gruppi di dimensione $\ge P$ (perché pattern diversi al livello 10 diventano uguali al livello 9), questi vengono promossi a Good-Leaves ("Good-Leaf-Recycled").
+    *   I record rimanenti continuano il ciclo scendendo di livello.
+2.  Alla fine, eventuali residui vengono soppressi o confluiti in un gruppo generico.
 
-### Fase 3: Formation of K-Groups
-I gruppi formati nella Fase 2 soddisfano il vincolo $P$, ma potrebbero non soddisfare ancora il vincolo $k$.
-L'algoritmo unisce i gruppi (P-groups) tra loro per formare i gruppi finali (K-groups):
-* Si usa un approccio **Greedy**.
-* Si uniscono i gruppi che minimizzano l'aumento della **Instant Value Loss (VL)** (ovvero l'ampiezza dell'intervallo `[min-max]`).
+> **Vantaggio:** Questo metodo garantisce che i record "facili" mantengano un dettaglio altissimo (es. Livello 20), mentre i record "rumorosi" o atipici degradano solo quanto basta per trovare compagnia.
 
-## Confronto Teorico: KAPRA vs Naive
+### 3. Fase 3: Formation of K-Groups
+I gruppi (Good-Leaves) formati, che soddisfano $P$, vengono uniti tra loro (greedy merge riducendo la Value Loss) finché ogni gruppo raggiunge la dimensione $k$.
 
-| Caratteristica | Naive (Top-Down) | KAPRA (Bottom-Up) |
+---
+
+## Analisi e Ottimizzazione dei Parametri
+
+Test eseguiti su un dataset con pattern strutturati (Cylinder, Bell, Funnel) di 3.000 record.
+
+### 1. Risultati Ottimali
+Configurazione migliore per compromesso VL/PL:
+
+| Parametro | Valore Ottimale | Descrizione |
 | :--- | :--- | :--- |
-| **Priorità** | Vicinanza dei Valori | Somiglianza dei Pattern |
-| **Gestione Outlier** | Generalizzazione (ritorno alla radice) | Riciclo (spostamento nel gruppo vicino) |
-| **Livello SAX** | Basso (spesso 1 o 2) | Alto (massimo dettaglio possibile) |
-| **Qualità Intervalli** | Stretti (VL Bassa) | Larghi (VL Alta) |
+| **K** | **5** | Valore standard per bilanciare privacy e utilità. |
+| **P** | **5** | Un valore medio permette di trovare pattern comuni senza frammentare troppo. |
+| **SAX_LEVEL** | **8-20** | KAPRA permette di impostare livelli molto alti (anche 20). Grazie al meccanismo di "Level Reduction", i gruppi forti restano dettagliati, gli altri si adattano. |
+
+### 2. Confronto KAPRA vs Naive (Il "Paradosso" della Performance)
+
+| Metrica | KAPRA (Level=20) | Naive (Mondrian) | Spiegazione |
+| :--- | :--- | :--- | :--- |
+| **Value Loss (VL)** | **~15.3** | **~4.5** | **Naive vince.** Raggruppando per valore, Naive crea inviluppi stretti (es. [10-15]). KAPRA raggruppa per forma, unendo curve simili ma distanti (es. una a 10 e una a 40), creando inviluppi ampi [10-40]. |
+| **Pattern Loss (PL)** | **~0.13** | **~0.00** | **Naive vince (sui numeri).** Sui dati puliti, Naive separa bene i gruppi. KAPRA paga la frammentazione: cercando il pattern perfetto (Livello 20), è costretto a unire residui in gruppi che, pur avendo la stessa forma, generano una lieve perdita matematica. |
+
+### 3. Conclusione: Quando usare KAPRA
+KAPRA non è progettato per minimizzare l'errore numerico (VL), ma per **salvare la semantica delle curve**.
+*   Usa **Naive** se ti interessa sapere che "il valore era circa 50".
+*   Usa **KAPRA** se ti interessa sapere che "c'era un picco seguito da una discesa", indipendentemente se questo è avvenuto a valore 10 o 100.

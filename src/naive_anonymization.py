@@ -99,11 +99,7 @@ def naive_node_splitting(node, P, max_level, time_cols):
         if pat not in groups: # se il gruppo con quel pattern non esiste lo creo 
             groups[pat] = []
         groups[pat].append(row) # aggiungi il record al gruppo
-        """ groups = {
-            pattern1: [row1, row2, ...],
-            pattern2: [row3, row4, ...],
-            ...
-        } """
+
     
     valid_children = [] # Size >= P
     small_children = [] # Size < P (TB-nodes)
@@ -162,17 +158,13 @@ def calculate_distance(ts_data, leaf_pattern, level):
     except:
         return float('inf')
 
-def main():
+def run_naive_anonymization(K=8, P=2, MAX_LEVEL=10, verbose=True):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     input_path = os.path.join(base_dir, "../docs/data/dataset_raw.csv")
     output_path = os.path.join(base_dir, "../docs/data/naive_anonymized.csv")
     
-    # parametri
-    K = 8
-    P = 2
-    MAX_LEVEL = 5 # limito la dimensione del SAX alphabet
-    
-    print(f"--- Naive (k,P)-Anonymization Algorithm (K={K}, P={P}) ---")
+    if verbose:
+        print(f"--- Naive (k,P)-Anonymization Algorithm (K={K}, P={P}, MAX_LEVEL={MAX_LEVEL}) ---")
     start_time = time.time()
     
     # carico i dati
@@ -189,15 +181,17 @@ def main():
     time_cols = [c for c in df.columns if c.startswith('H')]
     
     # divido dataset 
-    print("Phase 1: Partitioning dataset into K-groups (Time Series Clustering)...")
+    if verbose:
+        print("Phase 1: Partitioning dataset into K-groups (Time Series Clustering)...")
     dataset_dict = df_clean.to_dict('records') # trasformo il dataset in una lista di dizionari
     anon_dataset = makeDatasetKAnon(dataset_dict, K, time_cols=time_cols) # divido il dataset in K gruppi
     
     if not anon_dataset:
         print("Failed Phase 1.")
-        sys.exit(1)
+        return None
         
-    print(f"Phase 1 Complete.")
+    if verbose:
+        print(f"Phase 1 Complete.")
     
     df_ph1 = pd.DataFrame(anon_dataset) 
     grouped = df_ph1.groupby('GroupID') # raggruppo i record per GroupID
@@ -205,7 +199,8 @@ def main():
     final_leaves = []
     
     # divido i gruppi in nodi
-    print("Phase 2: Node Splitting per K-group...")
+    if verbose:
+        print("Phase 2: Node Splitting per K-group...")
     
     for group_id, group in grouped: # per ogni gruppo
         group_data = group.to_dict('records') # trasformo il gruppo in una lista di dizionari
@@ -264,7 +259,8 @@ def main():
         final_leaves.extend(good_leaves)
         
     # 4. Costruzione del Dataset Finale Anonimizzato
-    print("Costruzione del dataset finale anonimizzato...")
+    if verbose:
+        print("Costruzione del dataset finale anonimizzato...")
     final_rows = []
     
     total_pl = 0
@@ -313,93 +309,37 @@ def main():
         df_export = df_export[cols]
 
     df_export.to_csv(output_path, index=False)
-    print(f"Done. Saved to {output_path}")
+    if verbose:
+        print(f"Done. Saved to {output_path}")
 
     # --- Metriche ---
-    print("\n--- Metriche di Valutazione ---")
+    if verbose:
+        print("\n--- Metriche di Valutazione ---")
     
     end_time = time.time()
-    print(f"Tempo Totale di Esecuzione: {end_time - start_time:.4f} secondi")
+    exec_time = end_time - start_time
+    if verbose:
+        print(f"Tempo Totale di Esecuzione: {exec_time:.4f} secondi")
     
     avg_vl = df_final['Value_Loss'].mean()
-    print(f"Average Instant Value Loss (VL): {avg_vl:.4f}")
+    if verbose:
+        print(f"Average Instant Value Loss (VL): {avg_vl:.4f}")
     
     avg_pl = total_pl / total_records if total_records > 0 else 0
-    print(f"Average Pattern Loss (PL): {avg_pl:.4f}")
+    if verbose:
+        print(f"Average Pattern Loss (PL): {avg_pl:.4f}")
+    
+    return {
+        'K': K,
+        'P': P,
+        'MAX_LEVEL': MAX_LEVEL,
+        'Time': exec_time,
+        'VL': avg_vl,
+        'PL': avg_pl
+    }
 
-    # 3. Query Metrics (Simulazione)
-    # Errore Relativo nelle Range Queries
-    # Simuliamo N range queries casuali su H1..H8
-    
-    print("Simulazione Range Queries...")
-    # Serve accesso al df originale con colonne temporali (df_clean le ha)
-    # E df_final
-    
-    # Benchmark Semplice: 
-    # Seleziona una colonna C, range casuale [v1, v2]
-    # Conta(Originale) dove C in [v1, v2]
-    # Conta(Anonimizzato) dove Intervallo si sovrappone a [v1, v2]
-    # Stima sovrapposizione assumendo distribuzione uniforme in [min, max]
-    
-    import random
-    random.seed(42)
-    n_queries = 50
-    total_rel_error = 0
-    
-    for _ in range(n_queries):
-        col = random.choice(time_cols)
-        # Derivazione del range
-        min_val = df_clean[col].min()
-        max_val = df_clean[col].max()
-        
-        # Range casuale di dimensione 10% a 50% del dominio
-        range_size = (max_val - min_val) * random.uniform(0.1, 0.5)
-        start = random.uniform(min_val, max_val - range_size)
-        end = start + range_size
-        
-        # Conteggio Reale
-        true_count = df_clean[(df_clean[col] >= start) & (df_clean[col] <= end)].shape[0]
-        
-        if true_count == 0:
-            continue # Salta per evitare div by zero
-            
-        # Conteggio Stimato
-        # df_final[col] è "[min-max]"
-        # Parsa intervalli
-        est_count = 0
-        for val_str in df_final[col]:
-            # formato val_str "[min-max]"
-            try:
-                content = val_str.strip("[]")
-                # Gestione possibili valori float
-                v_min, v_max = map(float, content.split('-'))
-                
-                # Controllo sovrapposizione
-                # Intervallo [v_min, v_max]
-                # Query [start, end]
-                
-                overlap_start = max(v_min, start)
-                overlap_end = min(v_max, end)
-                
-                if overlap_start < overlap_end:
-                    # C'è sovrapposizione
-                    overlap_len = overlap_end - overlap_start
-                    interval_len = v_max - v_min
-                    
-                    if interval_len == 0:
-                        # Valore puntuale
-                        est_count += 1
-                    else:
-                        # Frazione
-                        est_count += (overlap_len / interval_len)
-            except:
-                pass
-                
-        rel_error = abs(true_count - est_count) / true_count
-        total_rel_error += rel_error
-        
-    avg_rel_error = total_rel_error / n_queries
-    print(f"Errore Relativo Medio nelle Range Queries (su {n_queries} run): {avg_rel_error:.4f}")
+def main():
+    run_naive_anonymization()
 
 
 if __name__ == "__main__":
